@@ -140,7 +140,7 @@
     color: var(--muted);
   }
 
-  input[type="text"], input[type="number"] {
+  input[type="text"], input[type="number"], select {
     padding: 8px 10px;
     border-radius: 8px;
     border: 1px solid var(--input-border);
@@ -268,6 +268,26 @@
     <h2>2. 上傳 CSV</h2>
     <input type="file" id="file-input" accept=".csv" multiple />
     <div class="file-list" id="file-list"></div>
+
+    <div id="iso-col-wrap" hidden style="margin-top:14px;">
+      <div class="field-grid">
+        <div class="field">
+          <label>Isolation 資料欄位（依欄名比對，避免抓錯 trace）</label>
+          <select id="iso-col-select">
+            <option value="S12 Log Mag(dB)" selected>S12 Log Mag(dB)</option>
+            <option value="S21 Log Mag(dB)">S21 Log Mag(dB)</option>
+            <option value="S11 Log Mag(dB)">S11 Log Mag(dB)</option>
+            <option value="S22 Log Mag(dB)">S22 Log Mag(dB)</option>
+            <option value="__custom__">自訂...</option>
+          </select>
+        </div>
+        <div class="field" id="iso-col-custom-wrap" hidden>
+          <label>自訂欄位關鍵字（大小寫不拘，例如 S12 Log Mag）</label>
+          <input type="text" id="iso-col-custom" value="S12 Log Mag">
+        </div>
+      </div>
+      <div class="hint" style="margin-top:6px;">請確認網路分析儀存檔時 Isolation 對應的是哪一個 S-parameter，避免因存檔順序不同而誤抓（例如誤抓到 S11）。</div>
+    </div>
   </div>
 
   <div class="card">
@@ -401,6 +421,28 @@ buildRows("manual-band-rows", "band-row", [
   { id: "manual-end-", label: "End", unit: true },
 ], 5);
 
+// ---------- Isolation column selector wiring ----------
+const isoColWrap = document.getElementById("iso-col-wrap");
+const isoColSelect = document.getElementById("iso-col-select");
+const isoColCustomWrap = document.getElementById("iso-col-custom-wrap");
+const isoColCustom = document.getElementById("iso-col-custom");
+
+function updateIsoColVisibility() {
+  const mode = document.querySelector('input[name="mode"]:checked').value;
+  isoColWrap.hidden = mode !== "iso";
+}
+document.querySelectorAll('input[name="mode"]').forEach(el => {
+  el.addEventListener("change", updateIsoColVisibility);
+});
+isoColSelect.addEventListener("change", () => {
+  isoColCustomWrap.hidden = isoColSelect.value !== "__custom__";
+});
+updateIsoColVisibility();
+
+function getIsoColKeyword() {
+  return isoColSelect.value === "__custom__" ? isoColCustom.value.trim() : isoColSelect.value;
+}
+
 // ---------- File parsing ----------
 function stripExtLabel(name) {
   const base = String(name).split(/[\\/]/).pop();
@@ -498,14 +540,33 @@ function parseCombinedFile(text, fileName) {
   return { freq, columns, table };
 }
 
-function parseIsolationSpecial(headers, rows, fstart, fend, fileName) {
-  if (!(headers.length >= 4 && headers[0] === "Freq(Hz)" && headers[3] === "S21 Log Mag(dB)")) return null;
+// 依欄位名稱關鍵字尋找 Freq 欄與目標資料欄（例如 "S12 Log Mag"），
+// 不依賴欄位順序，避免因網路分析儀存檔格式不同而抓錯 trace（例如誤抓 S11）。
+function parseTargetColumnSeries(headers, rows, fstart, fend, fileName, keyword) {
+  const kw = keyword.trim().toLowerCase();
+  if (!kw) return null;
+
+  let freqIdx = -1;
+  let targetIdx = -1;
+  headers.forEach((h, i) => {
+    const hl = String(h).toLowerCase();
+    if (freqIdx === -1 && hl.includes("freq")) freqIdx = i;
+    if (targetIdx === -1 && hl.includes(kw)) targetIdx = i;
+  });
+
+  if (freqIdx === -1 || targetIdx === -1) return null;
+
   const items = rows.map(r => ({
-    freq: parseFloat(r[0]) / 1e6,
-    value: parseFloat(r[3]),
-  })).filter(it => Number.isFinite(it.freq) && Number.isFinite(it.value) && it.freq >= fstart && it.freq <= fend)
+    freq: parseFloat(r[freqIdx]),
+    value: parseFloat(r[targetIdx]),
+  })).filter(it => Number.isFinite(it.freq) && Number.isFinite(it.value));
+
+  const freqMHz = convertFreqToMHz(items.map(it => it.freq));
+  const withMHz = items.map((it, i) => ({ freq: freqMHz[i], value: it.value }))
+    .filter(it => Number.isFinite(it.freq) && it.freq >= fstart && it.freq <= fend)
     .sort((a, b) => a.freq - b.freq);
-  return { label: stripExtLabel(fileName), freq: items.map(it => it.freq), value: items.map(it => it.value) };
+
+  return { label: stripExtLabel(fileName), freq: withMHz.map(it => it.freq), value: withMHz.map(it => it.value) };
 }
 
 function parseGenericSeries(headers, rows, fstart, fend, fileName) {
@@ -531,20 +592,34 @@ function parseGenericSeries(headers, rows, fstart, fend, fileName) {
   return { label: stripExtLabel(fileName), freq: items.map(it => it.freq), value: items.map(it => it.value) };
 }
 
-async function loadCsvFiles(files, fstart, fend, isIsolation) {
+async function loadCsvFiles(files, fstart, fend, isIsolation, targetColKeyword) {
   const seriesList = [];
+  const missingFiles = [];
+
   for (const file of files) {
     const text = await readFileText(file);
-    if (isIsolation) {
-      const { headers, rows } = parseCSVSkipToFreqHeader(text);
-      const special = parseIsolationSpecial(headers, rows, fstart, fend, file.name);
-      if (special) { seriesList.push(special); continue; }
-      seriesList.push(parseGenericSeries(headers, rows, fstart, fend, file.name));
+    const { headers, rows } = parseCSVSkipToFreqHeader(text);
+
+    if (isIsolation && targetColKeyword) {
+      const special = parseTargetColumnSeries(headers, rows, fstart, fend, file.name, targetColKeyword);
+      if (special) {
+        seriesList.push(special);
+      } else {
+        missingFiles.push(file.name);
+      }
       continue;
     }
-    const { headers, rows } = parseCSVSkipToFreqHeader(text);
+
     seriesList.push(parseGenericSeries(headers, rows, fstart, fend, file.name));
   }
+
+  if (isIsolation && targetColKeyword && missingFiles.length) {
+    throw new Error(
+      `以下檔案找不到包含「${targetColKeyword}」的欄位，請確認 CSV 內容或改用「自訂」關鍵字：` +
+      missingFiles.join("、")
+    );
+  }
+
   if (!seriesList.length) throw new Error("沒有讀到有效資料。請確認 CSV 格式與頻率範圍。");
 
   const freqSet = new Map();
@@ -809,6 +884,9 @@ document.getElementById("run-btn").addEventListener("click", async () => {
     const doVswr = mode === "vswr" || mode === "rl_vswr";
     const doIso = mode === "iso";
 
+    const isoColKeyword = doIso ? getIsoColKeyword() : null;
+    if (doIso && !isoColKeyword) throw new Error("請輸入 Isolation 欄位關鍵字。");
+
     const specs = [];
     BAND_ITEMS.forEach(([name, code]) => {
       const v = document.getElementById("spec-band-" + code).value.trim();
@@ -854,10 +932,10 @@ document.getElementById("run-btn").addEventListener("click", async () => {
       if (isCombinedFormat(headers)) {
         combinedFull = parseCombinedFile(text, files[0].name);
       } else {
-        combinedFull = await loadCsvFiles(files, fstart, fend, doIso);
+        combinedFull = await loadCsvFiles(files, fstart, fend, doIso, isoColKeyword);
       }
     } else {
-      combinedFull = await loadCsvFiles(files, fstart, fend, doIso);
+      combinedFull = await loadCsvFiles(files, fstart, fend, doIso, isoColKeyword);
     }
 
     const source = sliceByFreqRange(combinedFull, fstart, fend);
