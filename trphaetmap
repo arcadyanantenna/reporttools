@@ -1,0 +1,557 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>TRP Heatmap</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/plotly.js/2.32.0/plotly.min.js"></script>
+<script>
+  // 備援:cdnjs 載入失敗時改用 cdn.plot.ly
+  if (!window.Plotly) document.write('<script src="https://cdn.plot.ly/plotly-2.32.0.min.js"><\/script>');
+</script>
+<style>
+  :root {
+    color-scheme: dark light;
+    --bg: #0e1117;
+    --fg: #fafafa;
+    --muted: #8b949e;
+    --card-bg: rgba(120, 120, 120, 0.07);
+    --card-border: rgba(120, 120, 120, 0.25);
+    --input-bg: rgba(120, 120, 120, 0.08);
+    --input-border: rgba(120, 120, 120, 0.35);
+    --accent: #4f8cff;
+    --accent-fg: #ffffff;
+    --error-bg: rgba(220, 60, 60, 0.12);
+    --error-fg: #ff8080;
+    --success-bg: rgba(60, 180, 100, 0.12);
+    --success-fg: #6fdc9a;
+  }
+
+  @media (prefers-color-scheme: light) {
+    :root {
+      --bg: #ffffff;
+      --fg: #14171a;
+      --muted: #6b7280;
+      --card-bg: rgba(120, 120, 120, 0.05);
+      --card-border: rgba(120, 120, 120, 0.2);
+      --input-bg: rgba(120, 120, 120, 0.06);
+      --input-border: rgba(120, 120, 120, 0.3);
+      --error-bg: rgba(220, 60, 60, 0.08);
+      --error-fg: #c92a2a;
+      --success-bg: rgba(60, 180, 100, 0.08);
+      --success-fg: #2b8a3e;
+    }
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--fg);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+
+  .wrap { max-width: 1300px; margin: 0 auto; padding: 2rem 1.6rem 4rem; }
+
+  .top-nav { margin-bottom: 1.2rem; }
+  .top-nav a { color: var(--muted); text-decoration: none; font-size: 0.9rem; }
+  .top-nav a:hover { color: var(--fg); }
+
+  h1 { font-size: 1.9rem; font-weight: 800; margin: 0 0 0.2rem; }
+  .caption { color: var(--muted); font-size: 0.92rem; margin-bottom: 1.4rem; }
+
+  .tabs { display: flex; gap: 8px; margin-bottom: 1.4rem; flex-wrap: wrap; }
+  .tab-btn {
+    padding: 10px 16px; border-radius: 10px; border: 1px solid var(--card-border);
+    background: var(--card-bg); color: var(--fg); font-size: 0.92rem; font-weight: 600; cursor: pointer;
+  }
+  .tab-btn.active { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
+
+  .card {
+    border: 1px solid var(--card-border);
+    border-radius: 14px;
+    background: var(--card-bg);
+    padding: 18px 20px;
+    margin-bottom: 16px;
+  }
+  .card h2 { font-size: 1.05rem; font-weight: 700; margin: 0 0 0.9rem; }
+
+  input[type="file"] {
+    width: 100%; padding: 10px; border-radius: 10px;
+    border: 1px dashed var(--input-border); background: var(--input-bg); color: var(--fg);
+  }
+  .file-list { margin-top: 8px; font-size: 0.85rem; color: var(--muted); }
+
+  .field-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+  .field-grid.cols-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .field-grid input, .field-grid select { width: 100%; }
+  .field { display: flex; flex-direction: column; gap: 4px; }
+  .field label { font-size: 0.8rem; color: var(--muted); }
+
+  select, input[type="text"], input[type="number"] {
+    padding: 8px 10px; border-radius: 8px;
+    border: 1px solid var(--input-border); background: var(--input-bg); color: var(--fg); font-size: 0.92rem;
+  }
+  select { width: 100%; }
+  select option { color: #14171a; background: #ffffff; }
+
+  .hint { font-size: 0.8rem; color: var(--muted); margin: 0 0 8px; }
+
+  .run-btn {
+    display: block; width: 100%; padding: 12px; border-radius: 10px;
+    border: none; background: var(--accent); color: var(--accent-fg);
+    font-size: 1rem; font-weight: 700; cursor: pointer; margin-top: 4px;
+  }
+  .run-btn:hover { filter: brightness(1.08); }
+
+  .msg { padding: 10px 14px; border-radius: 10px; font-size: 0.9rem; margin-top: 12px; }
+  .msg.error { background: var(--error-bg); color: var(--error-fg); }
+  .msg.success { background: var(--success-bg); color: var(--success-fg); }
+  .msg.info { background: var(--input-bg); color: var(--muted); }
+
+  .result-card { margin-top: 22px; }
+
+  .dl-btn {
+    display: inline-block; margin-top: 10px; padding: 8px 14px; border-radius: 8px;
+    border: 1px solid var(--input-border); background: var(--input-bg); color: var(--fg);
+    font-size: 0.85rem; font-weight: 600; cursor: pointer; text-decoration: none; margin-right: 8px;
+  }
+  .dl-btn:hover { border-color: var(--accent); }
+
+  .heatmap-grid { display: flex; flex-direction: column; gap: 16px; }
+  .heatmap-item .plot-div { width: 100%; height: 560px; }
+  .heatmap-item { border: 1px solid var(--card-border); border-radius: 10px; padding: 10px; }
+
+  .table-wrap { overflow-x: auto; margin-bottom: 18px; }
+  table.stat { border-collapse: collapse; width: 100%; font-size: 0.9rem; }
+  table.stat th, table.stat td { border: 1px solid var(--card-border); padding: 7px 10px; text-align: center; white-space: nowrap; }
+  table.stat th { background: var(--input-bg); font-weight: 700; }
+  table.stat td:first-child { font-weight: 700; }
+  .stat-title { font-size: 0.95rem; font-weight: 700; margin: 4px 0 4px; }
+  .stat-rule { font-size: 0.8rem; color: var(--muted); margin-bottom: 8px; }
+
+  table.stat input[type="text"] { width: 120px; padding: 5px 8px; text-align: center; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top-nav"><a href="./index.html">&larr; 回入口頁</a></div>
+  <h1>📡 TRP Heatmap</h1>
+  <div class="caption">上傳 EMQuest TRP CSV,產生 Theta / Phi / Total Heatmap 與 Total 半球統計(上下、前後、左右)。</div>
+
+  <div class="tabs">
+    <button class="tab-btn active" data-tab="tab1">① 上傳 TRP CSV</button>
+    <button class="tab-btn" data-tab="tab2">② 產生 Heatmap</button>
+    <button class="tab-btn" data-tab="tab3">③ 半球統計</button>
+  </div>
+
+  <!-- TAB 1 -->
+  <div class="tab-panel active" id="tab1">
+    <div class="card">
+      <h2>① 上傳 TRP CSV</h2>
+      <div class="hint">可一次選多個 CSV(EMQuest TRP 匯出格式)。同一頻道有 2 個以上天線時,會另外產生 Composite。</div>
+      <input type="file" id="csv-input" accept=".csv" multiple />
+      <div class="file-list" id="csv-file-list"></div>
+      <div id="load-msg-box"></div>
+      <div id="file-table-box"></div>
+    </div>
+  </div>
+
+  <!-- TAB 2 -->
+  <div class="tab-panel" id="tab2">
+    <div class="card">
+      <h2>② 產生 Heatmap</h2>
+      <div class="hint">所有圖共用同一個色階;vmin / vmax / step 留空則依所選極化的各天線資料自動決定。同一頻道有 2 個以上天線時,接著畫 Composite(逐點取最大值)。</div>
+      <div class="field-grid cols-4">
+        <div class="field"><label>極化</label>
+          <select id="hm-pol">
+            <option value="Total">Total</option>
+            <option value="Theta">Theta</option>
+            <option value="Phi">Phi</option>
+          </select>
+        </div>
+        <div class="field"><label>vmin（留空 = 自動）</label><input type="number" id="hm-vmin"></div>
+        <div class="field"><label>vmax（留空 = 自動）</label><input type="number" id="hm-vmax"></div>
+        <div class="field"><label>step（留空 = 自動）</label><input type="number" id="hm-step" min="0"></div>
+      </div>
+      <button class="run-btn" id="gen-heatmap-btn" style="margin-top:12px;">產生 Heatmap</button>
+      <div id="heatmap-msg-box"></div>
+    </div>
+    <div id="heatmap-results"></div>
+  </div>
+
+  <!-- TAB 3 -->
+  <div class="tab-panel" id="tab3">
+    <div class="card">
+      <h2>③ 半球統計(Total,dBm)</h2>
+      <div class="hint">平均 = dBm 數值直接平均;邊界同時計入兩個半球,「不含邊界」則排除邊界那一條。φ360° 與 φ0° 為同一點,不重複計入。</div>
+      <div id="stats-box"><div class="msg info">請先在第①步上傳 CSV。</div></div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ==== CORE (pure functions) ====
+const TH_ANGLES = Array.from({ length: 13 }, (_, i) => i * 15);   // 0..180
+const PH_ANGLES = Array.from({ length: 25 }, (_, i) => i * 15);   // 0..360
+const POLS = ["Theta", "Phi", "Total"];
+
+function parseTrpCsv(text) {
+  const lines = text.split(/\r\n|\n|\r/);
+  const mats = {};
+  const summary = {};
+  for (let i = 0; i < lines.length; i++) {
+    const c = lines[i].split(",");
+    const head = (c[0] || "").trim();
+    if (POLS.includes(head) && c.length > 2 && /theta angle/i.test(c[1] || "")) {
+      const thetas = c.slice(2).map(s => s.trim()).filter(s => s !== "").map(Number);
+      const mat = TH_ANGLES.map(() => new Array(PH_ANGLES.length).fill(NaN));
+      let j = i + 1;
+      if (j < lines.length && /phi angle/i.test(lines[j].split(",")[1] || "")) j++;
+      for (; j < lines.length; j++) {
+        const r = lines[j].split(",");
+        const phiStr = (r[1] || "").trim();
+        if (phiStr === "" || !/^-?\d+(\.\d+)?$/.test(phiStr)) break;
+        const phi = Math.round(parseFloat(phiStr));
+        const pi = PH_ANGLES.indexOf(phi);
+        if (pi < 0) continue;
+        thetas.forEach((t, k) => {
+          const ti = TH_ANGLES.indexOf(Math.round(t));
+          const v = parseFloat((r[2 + k] || "").trim());
+          if (ti >= 0) mat[ti][pi] = Number.isFinite(v) ? v : NaN;
+        });
+      }
+      const i0 = PH_ANGLES.indexOf(0), i360 = PH_ANGLES.indexOf(360);
+      mat.forEach(row => { if (!Number.isFinite(row[i360])) row[i360] = row[i0]; });
+      mats[head] = mat;
+    }
+    const key = (c[1] || "").trim();
+    if (key === "Tot. Rad. Pwr. (dBm)" || key === "Peak EIRP (dBm)") {
+      summary[key] = { Theta: parseFloat(c[2]), Phi: parseFloat(c[3]), Total: parseFloat(c[4]) };
+    }
+  }
+  return { mats, summary };
+}
+
+function fileMeta(name) {
+  const stem = name.replace(/\.[^.]+$/, "");
+  const chM = stem.match(/CH(\d+)/i);
+  const bandM = stem.match(/(?:^|[_\W])(2G|5G|6G)(?:[_\W]|$)/i);
+  const ch = chM ? parseInt(chM[1], 10) : null;
+  const band = bandM ? bandM[1].toUpperCase() : null;
+  let freq = null;
+  if (ch !== null && band) {
+    if (band === "2G") freq = ch === 14 ? 2484 : 2407 + 5 * ch;
+    else if (band === "5G") freq = 5000 + 5 * ch;
+    else if (band === "6G") freq = 5950 + 5 * ch;
+  }
+  const label = ch !== null ? `CH${ch}` : stem;
+  // 天線名稱:取檔名中 "Ant" 後面的編號 / 名稱,例如 _Ant1_、_Ant_2_、_ANT 3、_Ant_All
+  const antM = stem.match(/(?:^|[_\W])ANT[_\s-]?([A-Za-z0-9]+)/i);
+  const ant = antM ? `ANT${/^\d+$/.test(antM[1]) ? "" : " "}${antM[1]}` : stem;
+  return { stem, ch, band, freq, label, ant };
+}
+
+// cells of mat whose theta in thetaSet and phi in phiSet
+function pick(mat, thPred, phPred) {
+  const out = [];
+  TH_ANGLES.forEach((t, i) => {
+    if (!thPred(t)) return;
+    PH_ANGLES.forEach((p, j) => { if (phPred(p) && Number.isFinite(mat[i][j])) out.push(mat[i][j]); });
+  });
+  return out;
+}
+const mean = a => a.length ? a.reduce((s, v) => s + v, 0) / a.length : NaN;
+const maxOf = a => a.length ? Math.max(...a) : NaN;
+const ALL = () => true;
+const NO360 = p => p < 360;
+
+// Hemisphere definitions (Total only, dBm)
+//  上/下: θ 0–90 / 90–180          (φ 0–345,360 與 0 重複不計)
+//  前/後: φ 0–180 / 180–360        (θ 全部)
+//  左/右: φ 270–360+0–90 / 90–270  (θ 全部)
+//  邊界同時計入兩邊;「不含邊界」排除邊界那一條
+const HEMIS = [
+  { key: "UD", title: "上 / 下半球", a: "上半球", b: "下半球", rule: "上 = θ 0–90°,下 = θ 90–180°;邊界 θ90°",
+    A:  [t => t <= 90, NO360], B:  [t => t >= 90, NO360],
+    Ax: [t => t < 90, NO360],  Bx: [t => t > 90, NO360] },
+  { key: "FB", title: "前 / 後半球", a: "前半球", b: "後半球", rule: "前 = φ 0–180°,後 = φ 180–360°;邊界 φ0°(=360°)、φ180°",
+    A:  [ALL, p => p <= 180],          B:  [ALL, p => p >= 180],
+    Ax: [ALL, p => p > 0 && p < 180],  Bx: [ALL, p => p > 180 && p < 360] },
+  { key: "LR", title: "左 / 右半球", a: "左半球", b: "右半球", rule: "左 = φ 270–90°,右 = φ 90–270°;邊界 φ90°、φ270°",
+    A:  [ALL, p => (p >= 270 && p < 360) || p <= 90], B: [ALL, p => p >= 90 && p <= 270],
+    Ax: [ALL, p => (p > 270 && p < 360) || p < 90],   Bx: [ALL, p => p > 90 && p < 270] },
+];
+
+function hemiStats(mat) {
+  const res = {};
+  HEMIS.forEach(h => {
+    const A = pick(mat, ...h.A), B = pick(mat, ...h.B), Ax = pick(mat, ...h.Ax), Bx = pick(mat, ...h.Bx);
+    res[h.key] = { avgA: mean(A), avgB: mean(B), maxA: maxOf(A), maxB: maxOf(B), maxAx: maxOf(Ax), maxBx: maxOf(Bx) };
+  });
+  return res;
+}
+// Composite:各天線逐點取最大值(point-by-point maximum)
+function composite(mats) {
+  return TH_ANGLES.map((_, ti) => PH_ANGLES.map((_, pi) => Math.max(...mats.map(m => m[ti][pi]))));
+}
+// 最大值位置(φ360 與 φ0 相同,不重複搜尋;同值取第一個 θ→φ)
+function maxLoc(mat) {
+  let best = -Infinity, bt = null, bp = null;
+  TH_ANGLES.forEach((t, i) => PH_ANGLES.forEach((p, j) => {
+    if (p < 360 && Number.isFinite(mat[i][j]) && mat[i][j] > best) { best = mat[i][j]; bt = t; bp = p; }
+  }));
+  return { value: best, theta: bt, phi: bp };
+}
+// ==== END CORE ====
+
+
+// ---------- tab switching ----------
+document.querySelectorAll(".tab-btn").forEach(btn => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
+    document.querySelectorAll(".tab-panel").forEach(p => p.classList.remove("active"));
+    btn.classList.add("active");
+    document.getElementById(btn.dataset.tab).classList.add("active");
+  });
+});
+
+function showMsg(boxId, text, type) {
+  document.getElementById(boxId).innerHTML = `<div class="msg ${type}">${text}</div>`;
+}
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, ch => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]));
+}
+
+function readFileText(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(reader.error);
+    reader.onload = () => {
+      let text;
+      try { text = new TextDecoder("big5").decode(reader.result); }
+      catch (e) { text = new TextDecoder("iso-8859-1").decode(reader.result); }
+      resolve(text);
+    };
+    reader.readAsArrayBuffer(file);
+  });
+}
+
+function nanmaxMat(mat) {
+  let m = -Infinity, any = false;
+  mat.forEach(row => row.forEach(v => { if (Number.isFinite(v)) { any = true; if (v > m) m = v; } }));
+  return any ? m : NaN;
+}
+function nanminMat(mat) {
+  let m = Infinity, any = false;
+  mat.forEach(row => row.forEach(v => { if (Number.isFinite(v)) { any = true; if (v < m) m = v; } }));
+  return any ? m : NaN;
+}
+function rangeInclusive(min, max, step) {
+  const out = [];
+  for (let v = min; v <= max + 1e-9; v += step) out.push(Math.round(v * 1000) / 1000);
+  return out;
+}
+
+// ============================================================
+// Heatmap (same look as Antenna Heatmap, Comcast layout)
+// ============================================================
+function renderHeatmapPanel(divId, label, pol, freqLabel, matrix, vmin, vmax, step, subtitle) {
+  const trace = {
+    type: "heatmap",
+    z: matrix,
+    x: PH_ANGLES,
+    y: TH_ANGLES,
+    zmin: vmin, zmax: vmax,
+    zsmooth: "best",
+    colorscale: "Jet",
+    colorbar: step ? { tickmode: "array", tickvals: rangeInclusive(vmin, vmax, step) } : {},
+  };
+  let titleText = freqLabel ? `${label} - ${pol} - ${freqLabel} MHz` : `${label} - ${pol}`;
+  if (subtitle) titleText += `<br>${subtitle}`;
+  const layout = {
+    title: { text: titleText, font: { size: 13 } },
+    xaxis: { title: "Phi Angle (deg)", dtick: 15 },
+    yaxis: { title: "Theta Angle (deg)", dtick: 15, autorange: "reversed" },
+    paper_bgcolor: "#ffffff", plot_bgcolor: "#ffffff", font: { color: "#1a1a1a" },
+    margin: { l: 60, r: 20, t: subtitle ? 60 : 40, b: 45 },
+  };
+  Plotly.newPlot(divId, [trace], layout, { responsive: true, displaylogo: false });
+}
+
+function downloadHeatmapPng(divId, filename) {
+  const el = document.getElementById(divId);
+  const w = Math.round(el.offsetWidth) || 600;
+  const h = Math.round(el.offsetHeight) || 380;
+  Plotly.toImage(el, { format: "png", width: w, height: h, scale: 3 }).then(url => {
+    const a = document.createElement("a");
+    a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  });
+}
+
+// ============================================================
+// State + Tab 1
+// ============================================================
+let datasets = [];   // { name, meta, mats, summary }
+
+const csvInput = document.getElementById("csv-input");
+csvInput.addEventListener("change", async () => {
+  const files = Array.from(csvInput.files);
+  document.getElementById("csv-file-list").textContent = files.length ? "已選擇：" + files.map(f => f.name).join("、") : "";
+  document.getElementById("load-msg-box").innerHTML = "";
+  document.getElementById("heatmap-results").innerHTML = "";
+  datasets = [];
+  if (!files.length) { renderStats(); return; }
+
+  const errors = [];
+  for (const f of files) {
+    try {
+      const { mats, summary } = parseTrpCsv(await readFileText(f));
+      const missing = POLS.filter(p => !mats[p]);
+      if (missing.length === POLS.length) throw new Error("找不到 Theta / Phi / Total 資料表,可能不是 TRP CSV。");
+      let nan = 0;
+      POLS.forEach(p => { if (mats[p]) mats[p].forEach(r => r.forEach(v => { if (!Number.isFinite(v)) nan++; })); });
+      datasets.push({ name: f.name, meta: fileMeta(f.name), mats, summary, missing, nan });
+    } catch (err) {
+      errors.push(`${escapeHtml(f.name)}:${escapeHtml(err.message)}`);
+    }
+  }
+  datasets.sort((a, b) => (a.meta.freq ?? 1e9) - (b.meta.freq ?? 1e9) || a.name.localeCompare(b.name));
+
+  datasets.forEach(d => { d.ant = d.meta.ant; });
+  let html = "";
+  if (datasets.length) html += `<div class="msg success">✅ 已讀取 ${datasets.length} 個檔案。天線名稱可在下表修改(會用在圖的標題與統計表)。</div>`;
+  if (errors.length) html += `<div class="msg error">❌ ${errors.join("<br>")}</div>`;
+  document.getElementById("load-msg-box").innerHTML = html;
+  renderFileTable();
+  renderStats();
+});
+
+function groupKey(d) { return d.meta.freq ? `F${d.meta.freq}` : `L${d.meta.label}`; }
+function groupLabel(d) { return d.meta.freq ? `${d.meta.label}(${d.meta.freq} MHz)` : d.meta.label; }
+function groupsOf(list) {
+  const map = new Map();
+  list.forEach(d => { const k = groupKey(d); if (!map.has(k)) map.set(k, []); map.get(k).push(d); });
+  return Array.from(map.values());
+}
+
+function renderFileTable() {
+  const box = document.getElementById("file-table-box");
+  if (!datasets.length) { box.innerHTML = ""; return; }
+  const rows = datasets.map((d, i) => {
+    const warn = [];
+    if (d.missing.length) warn.push(`缺少 ${d.missing.join("/")}`);
+    if (d.nan) warn.push(`${d.nan} 個空白點`);
+    return `<tr><td style="text-align:left;font-weight:400;">${escapeHtml(d.name)}</td>
+      <td><input type="text" data-idx="${i}" class="ant-input" value="${escapeHtml(d.ant)}"></td>
+      <td>${escapeHtml(groupLabel(d))}</td><td>${warn.length ? "⚠️ " + warn.join(",") : "—"}</td></tr>`;
+  }).join("");
+  const dupMsgs = groupsOf(datasets).map(g => {
+    const names = g.map(d => d.ant);
+    const dup = names.filter((n, i) => names.indexOf(n) !== i);
+    return dup.length ? `${escapeHtml(groupLabel(g[0]))} 有重複的天線名稱:${escapeHtml(Array.from(new Set(dup)).join("、"))}` : "";
+  }).filter(Boolean);
+  box.innerHTML = `<div class="table-wrap" style="margin-top:12px;"><table class="stat">
+    <tr><th>檔案</th><th>天線名稱</th><th>頻道</th><th>備註</th></tr>${rows}</table></div>` +
+    (dupMsgs.length ? `<div class="msg error">⚠️ ${dupMsgs.join("<br>")}</div>` : "");
+  box.querySelectorAll(".ant-input").forEach(inp => {
+    inp.addEventListener("change", () => {
+      datasets[+inp.dataset.idx].ant = inp.value.trim() || datasets[+inp.dataset.idx].meta.ant;
+      renderFileTable();
+      renderStats();
+    });
+  });
+}
+
+// ============================================================
+// Tab 2
+// ============================================================
+document.getElementById("gen-heatmap-btn").addEventListener("click", () => {
+  const resultsEl = document.getElementById("heatmap-results");
+  resultsEl.innerHTML = "";
+  document.getElementById("heatmap-msg-box").innerHTML = "";
+  try {
+    if (!window.Plotly) throw new Error("繪圖元件 Plotly 載入失敗(cdnjs.cloudflare.com 與 cdn.plot.ly 都連不到),請確認網路或防火牆設定後重新整理頁面。");
+    if (!datasets.length) throw new Error("請先在第①步上傳 TRP CSV。");
+    const pol = document.getElementById("hm-pol").value;
+    const list = datasets.filter(d => d.mats[pol]);
+    if (!list.length) throw new Error(`上傳的檔案中沒有 ${pol} 資料。`);
+
+    const vminEl = document.getElementById("hm-vmin").value.trim();
+    const vmaxEl = document.getElementById("hm-vmax").value.trim();
+    const stepEl = document.getElementById("hm-step").value.trim();
+    let vmin = vminEl === "" ? Math.min(...list.map(d => nanminMat(d.mats[pol]))) : parseFloat(vminEl);
+    let vmax = vmaxEl === "" ? Math.max(...list.map(d => nanmaxMat(d.mats[pol]))) : parseFloat(vmaxEl);
+    const step = stepEl === "" ? null : parseFloat(stepEl);
+    if (vmin >= vmax) vmax = vmin + 1e-6;
+
+    const grid = document.createElement("div");
+    grid.className = "heatmap-grid";
+    resultsEl.appendChild(grid);
+
+    const panels = [];
+    let compCount = 0;
+    groupsOf(list).forEach(g => {
+      const freqLabel = g[0].meta.freq ? String(g[0].meta.freq) : "";
+      g.forEach(d => panels.push({ label: d.ant, freqLabel, matrix: d.mats[pol] }));
+      if (g.length >= 2) {
+        const comp = composite(g.map(d => d.mats[pol]));
+        const loc = maxLoc(comp);
+        panels.push({ label: "Composite", freqLabel, matrix: comp,
+          subtitle: `Max=${loc.value.toFixed(2)} dBm @ Phi=${loc.phi}°, Theta=${loc.theta}°` });
+        compCount++;
+      }
+    });
+
+    panels.forEach((p, i) => {
+      const divId = `hm-panel-${i}`;
+      const item = document.createElement("div");
+      item.className = "heatmap-item";
+      const pngName = p.freqLabel ? `${p.label}_${pol}_${p.freqLabel}MHz_TRP.png` : `${p.label}_${pol}_TRP.png`;
+      item.innerHTML = `<div class="plot-div" id="${divId}"></div><button class="dl-btn" id="${divId}-dl">⬇️ ${escapeHtml(pngName)}</button>`;
+      grid.appendChild(item);
+      renderHeatmapPanel(divId, p.label, pol, p.freqLabel, p.matrix, vmin, vmax, step, p.subtitle);
+      document.getElementById(`${divId}-dl`).addEventListener("click", () => downloadHeatmapPng(divId, pngName));
+    });
+
+    const skipped = datasets.length - list.length;
+    showMsg("heatmap-msg-box", `✅ Heatmap 已完成(色階 ${vmin.toFixed(2)} ~ ${vmax.toFixed(2)} dBm)${compCount ? `,含 ${compCount} 組 Composite` : ",各頻道只有 1 個天線,未產生 Composite"}${skipped ? `,${skipped} 個檔案缺少 ${pol} 資料已略過` : ""}`, "success");
+  } catch (err) {
+    showMsg("heatmap-msg-box", "❌ " + err.message, "error");
+  }
+});
+
+// ============================================================
+// Tab 3 — hemisphere stats (Total)
+// ============================================================
+function fmt(v) { return Number.isFinite(v) ? v.toFixed(2) : "—"; }
+
+function renderStats() {
+  const box = document.getElementById("stats-box");
+  const list = datasets.filter(d => d.mats.Total);
+  if (!list.length) {
+    box.innerHTML = `<div class="msg info">${datasets.length ? "上傳的檔案中沒有 Total 資料。" : "請先在第①步上傳 CSV。"}</div>`;
+    return;
+  }
+  const stats = [];
+  groupsOf(list).forEach(g => {
+    g.forEach(d => stats.push({ name: `${d.ant} / ${groupLabel(d)}`, s: hemiStats(d.mats.Total) }));
+    if (g.length >= 2) stats.push({ name: `Composite / ${groupLabel(g[0])}`, s: hemiStats(composite(g.map(d => d.mats.Total))), comp: true });
+  });
+  box.innerHTML = HEMIS.map(h => {
+    const head = `<tr><th>天線 / 頻道</th><th>${h.a} Avg</th><th>${h.b} Avg</th><th>${h.a} Max<br>(含邊界)</th><th>${h.b} Max<br>(含邊界)</th><th>${h.a} Max<br>(不含邊界)</th><th>${h.b} Max<br>(不含邊界)</th></tr>`;
+    const rows = stats.map(({ name, s, comp }) => {
+      const r = s[h.key];
+      return `<tr${comp ? ' style="background:var(--input-bg);"' : ""}><td>${escapeHtml(name)}</td><td>${fmt(r.avgA)}</td><td>${fmt(r.avgB)}</td><td>${fmt(r.maxA)}</td><td>${fmt(r.maxB)}</td><td>${fmt(r.maxAx)}</td><td>${fmt(r.maxBx)}</td></tr>`;
+    }).join("");
+    return `<div class="stat-title">${h.title}</div><div class="stat-rule">${h.rule}</div><div class="table-wrap"><table class="stat">${head}${rows}</table></div>`;
+  }).join("") + `<div class="hint">單位:dBm。Composite = 同一頻道各天線 Total 逐點取最大值後再計算。</div>`;
+}
+</script>
+</body>
+</html>
