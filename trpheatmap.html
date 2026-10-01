@@ -165,7 +165,7 @@
   <div class="tab-panel" id="tab2">
     <div class="card">
       <h2>② 產生 Heatmap</h2>
-      <div class="hint">所有圖共用同一個色階;vmin / vmax / step 留空則依所選極化的各天線資料自動決定。同一頻道有 2 個以上天線時,接著畫 Composite(逐點取最大值)。</div>
+      <div class="hint">圖面以 bicubic 內插平滑顯示,游標顯示的是最接近的 15° 原始量測值;半球統計與 Composite Max 皆以原始量測值計算。所有圖共用同一個色階;vmin / vmax / step 留空則依所選極化的各天線資料自動決定。同一頻道有 2 個以上天線時,接著畫 Composite(逐點取最大值)。</div>
       <div class="field-grid cols-4">
         <div class="field"><label>極化</label>
           <select id="hm-pol">
@@ -307,6 +307,38 @@ function maxLoc(mat) {
   }));
   return { value: best, theta: bt, phi: bp };
 }
+// ---------- 顯示用內插(只影響畫面,統計一律用原始 15° 資料) ----------
+// Catmull-Rom bicubic,通過原始量測點;φ 方向 0°/360° 頭尾相接,θ 方向兩端以邊界值延伸。
+// 每個內插點限制在所在格子 4 個量測點的最大 / 最小值之間,避免 overshoot。
+const FINE_STEP = 1;
+const FINE_TH = Array.from({ length: 180 / FINE_STEP + 1 }, (_, i) => i * FINE_STEP);
+const FINE_PH = Array.from({ length: 360 / FINE_STEP + 1 }, (_, i) => i * FINE_STEP);
+function cr(p0, p1, p2, p3, t) {
+  return 0.5 * (2 * p1 + (-p0 + p2) * t + (2 * p0 - 5 * p1 + 4 * p2 - p3) * t * t + (-p0 + 3 * p1 - 3 * p2 + p3) * t * t * t);
+}
+function upsampleForDisplay(mat) {
+  const nT = TH_ANGLES.length, nP = PH_ANGLES.length - 1;         // 13 θ, 24 φ(去掉 360)
+  const g = (ti, pi) => mat[Math.min(Math.max(ti, 0), nT - 1)][((pi % nP) + nP) % nP];
+  return FINE_TH.map(t => {
+    const ft = t / 15, t0 = Math.min(Math.floor(ft), nT - 2), dt = ft - t0;
+    return FINE_PH.map(p => {
+      const fp = p / 15, p0 = Math.min(Math.floor(fp), nP), dp = fp - p0;
+      const corners = [g(t0, p0), g(t0, p0 + 1), g(t0 + 1, p0), g(t0 + 1, p0 + 1)];
+      if (corners.some(v => !Number.isFinite(v))) return g(Math.round(ft), Math.round(fp));
+      const rows = [-1, 0, 1, 2].map(k => cr(g(t0 + k, p0 - 1), g(t0 + k, p0), g(t0 + k, p0 + 1), g(t0 + k, p0 + 2), dp));
+      let v = cr(rows[0], rows[1], rows[2], rows[3], dt);
+      if (!Number.isFinite(v)) return g(Math.round(ft), Math.round(fp));
+      return Math.min(Math.max(v, Math.min(...corners)), Math.max(...corners));
+    });
+  });
+}
+// 游標顯示:最接近的原始量測點(角度 + 數值)
+function nearestMeasured(mat) {
+  return FINE_TH.map(t => {
+    const ti = Math.round(t / 15);
+    return FINE_PH.map(p => { const pi = Math.round(p / 15); return [PH_ANGLES[pi], TH_ANGLES[ti], mat[ti][pi]]; });
+  });
+}
 // ==== END CORE ====
 
 
@@ -363,9 +395,11 @@ function rangeInclusive(min, max, step) {
 function renderHeatmapPanel(divId, label, pol, freqLabel, matrix, vmin, vmax, step, subtitle) {
   const trace = {
     type: "heatmap",
-    z: matrix,
-    x: PH_ANGLES,
-    y: TH_ANGLES,
+    z: upsampleForDisplay(matrix),
+    x: FINE_PH,
+    y: FINE_TH,
+    customdata: nearestMeasured(matrix),
+    hovertemplate: "Phi = %{customdata[0]}°<br>Theta = %{customdata[1]}°<br>%{customdata[2]:.2f} dBm<extra></extra>",
     zmin: vmin, zmax: vmax,
     zsmooth: "best",
     colorscale: "Jet",
