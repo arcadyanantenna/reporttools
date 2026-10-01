@@ -789,13 +789,63 @@ function heatmapLayoutForMode(isComcast) {
   return { xlabel: "Theta Angle (deg)", ylabel: "Phi Angle (deg)" };
 }
 
+// ---------- 顯示用內插(只影響畫面;Excel、統計、Homogenous / MIMO 一律用原始 15° 資料) ----------
+// Catmull-Rom bicubic,通過原始量測點。欄方向(Comcast 的 φ、ETS 的 θ)若頭尾兩欄數值相同
+// (0°/360° 或 -180°/180°)則頭尾相接處理,否則以邊界值延伸;列方向以邊界值延伸。
+// 每個內插點限制在所在格子 4 個量測點的最大 / 最小值之間,避免 overshoot。
+const FINE_STEP = 1;
+function catmullRom(p0, p1, p2, p3, t) {
+  return 0.5 * (2 * p1 + (-p0 + p2) * t + (2 * p0 - 5 * p1 + 4 * p2 - p3) * t * t + (-p0 + 3 * p1 - 3 * p2 + p3) * t * t * t);
+}
+function upsampleForDisplay(matrix, rowAngles, colAngles) {
+  const nR = rowAngles.length, nC = colAngles.length;
+  const rStep = rowAngles[1] - rowAngles[0], cStep = colAngles[1] - colAngles[0];
+  const periodic = Math.abs(colAngles[nC - 1] - colAngles[0] - 360) < 1e-9 &&
+    matrix.every(row => !Number.isFinite(row[0]) || !Number.isFinite(row[nC - 1]) || Math.abs(row[0] - row[nC - 1]) < 1e-9);
+  const nP = periodic ? nC - 1 : nC;
+  const clampR = i => Math.min(Math.max(i, 0), nR - 1);
+  const wrapC = j => periodic ? ((j % nP) + nP) % nP : Math.min(Math.max(j, 0), nC - 1);
+  const g = (i, j) => matrix[clampR(i)][wrapC(j)];
+  const nearest = (fr, fc) => matrix[clampR(Math.round(fr))][Math.min(Math.max(Math.round(fc), 0), nC - 1)];
+
+  const fineRows = [], fineCols = [];
+  for (let a = rowAngles[0]; a <= rowAngles[nR - 1] + 1e-9; a += FINE_STEP) fineRows.push(Math.round(a * 1000) / 1000);
+  for (let a = colAngles[0]; a <= colAngles[nC - 1] + 1e-9; a += FINE_STEP) fineCols.push(Math.round(a * 1000) / 1000);
+
+  const z = fineRows.map(ra => {
+    const fr = (ra - rowAngles[0]) / rStep, r0 = Math.min(Math.floor(fr), nR - 2), dr = fr - r0;
+    return fineCols.map(ca => {
+      const fc = (ca - colAngles[0]) / cStep, c0 = Math.min(Math.floor(fc), nC - 2), dc = fc - c0;
+      const corners = [g(r0, c0), g(r0, c0 + 1), g(r0 + 1, c0), g(r0 + 1, c0 + 1)];
+      if (corners.some(v => !Number.isFinite(v))) return nearest(fr, fc);
+      const rowVals = [-1, 0, 1, 2].map(k => catmullRom(g(r0 + k, c0 - 1), g(r0 + k, c0), g(r0 + k, c0 + 1), g(r0 + k, c0 + 2), dc));
+      const v = catmullRom(rowVals[0], rowVals[1], rowVals[2], rowVals[3], dr);
+      if (!Number.isFinite(v)) return nearest(fr, fc);
+      return Math.min(Math.max(v, Math.min(...corners)), Math.max(...corners));
+    });
+  });
+  // 游標顯示:最接近的原始 15° 量測點(角度 + 數值)
+  const custom = fineRows.map(ra => {
+    const ri = clampR(Math.round((ra - rowAngles[0]) / rStep));
+    return fineCols.map(ca => {
+      const ci = Math.min(Math.max(Math.round((ca - colAngles[0]) / cStep), 0), nC - 1);
+      return [colAngles[ci], rowAngles[ri], matrix[ri][ci]];
+    });
+  });
+  return { x: fineCols, y: fineRows, z, custom };
+}
+
 function renderHeatmapPanel(divId, label, pol, freqLabel, cleaned, vmin, vmax, step, isComcast) {
   const { xlabel, ylabel } = heatmapLayoutForMode(isComcast);
+  const fine = upsampleForDisplay(cleaned.matrix, cleaned.rows, cleaned.cols);
+  const xName = isComcast ? "Phi" : "Theta", yName = isComcast ? "Theta" : "Phi";
   const trace = {
     type: "heatmap",
-    z: cleaned.matrix,
-    x: cleaned.cols,
-    y: cleaned.rows,
+    z: fine.z,
+    x: fine.x,
+    y: fine.y,
+    customdata: fine.custom,
+    hovertemplate: `${xName} = %{customdata[0]}°<br>${yName} = %{customdata[1]}°<br>%{customdata[2]:.2f}<extra></extra>`,
     zmin: vmin, zmax: vmax,
     zsmooth: "best",
     colorscale: "Jet",
