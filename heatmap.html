@@ -815,7 +815,7 @@ function upsampleForDisplay(matrix, rowAngles, colAngles) {
   const z = fineRows.map(ra => {
     const fr = (ra - rowAngles[0]) / rStep, r0 = Math.min(Math.floor(fr), nR - 2), dr = fr - r0;
     return fineCols.map(ca => {
-      const fc = (ca - colAngles[0]) / cStep, c0 = Math.min(Math.floor(fc), nC - 2), dc = fc - c0;
+      const fc = (ca - colAngles[0]) / cStep, c0 = periodic ? Math.floor(fc) : Math.min(Math.floor(fc), nC - 2), dc = fc - c0;
       const corners = [g(r0, c0), g(r0, c0 + 1), g(r0 + 1, c0), g(r0 + 1, c0 + 1)];
       if (corners.some(v => !Number.isFinite(v))) return nearest(fr, fc);
       const rowVals = [-1, 0, 1, 2].map(k => catmullRom(g(r0 + k, c0 - 1), g(r0 + k, c0), g(r0 + k, c0 + 1), g(r0 + k, c0 + 2), dc));
