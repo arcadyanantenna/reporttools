@@ -135,7 +135,7 @@
         <h2>Heatmap</h2>
         <p class="desc">球面 RBF(thin-plate spline)內插,再依「柔和度」做高斯暈染;Avg TIS、Min / Max 一律以未暈染的資料計算,Min / Max 取原始量測點。</p>
         <div class="empty" id="empty">從左邊上傳 TIS CSV 開始。</div>
-        <div class="canvas-wrap"><canvas id="cv" width="2440" height="1480" hidden></canvas></div>
+        <div class="canvas-wrap"><canvas id="cv" width="2520" height="1280" hidden></canvas></div>
         <div class="status" id="status" hidden></div>
       </section>
 
@@ -432,7 +432,7 @@ function draw() {
 
   const cv = $('cv'), ctx = cv.getContext('2d'), S = 2;      // 2x for crisp export
   ctx.setTransform(S, 0, 0, S, 0, 0);
-  const W = 1220, H = 740, X0 = 92, Y0 = 84, PW = 976, PHt = 600;
+  const W = 1260, H = 640, X0 = 92, Y0 = 72, PW = 1036, PHt = 508;   // 整張圖約 2:1(同 TRP 630×320)
   ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, W, H);
   ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
   ctx.drawImage(off, X0, Y0, PW, PHt);
@@ -464,8 +464,8 @@ function draw() {
 
   // title
   ctx.font = font(14); ctx.textBaseline = 'alphabetic';
-  ctx.fillText(`${f.name}: TIS | ${pol} | ${freqFromName(f.name)}`, X0 + PW / 2, 40);
-  ctx.fillText(`Min=${R.mn.v.toFixed(2)} dBm @ Phi=${R.mn.p}°, Theta=${R.mn.t}° | Max=${R.mx.v.toFixed(2)} dBm`, X0 + PW / 2, 60);
+  ctx.fillText(`${f.name}: TIS | ${pol} | ${freqFromName(f.name)}`, X0 + PW / 2, 30);
+  ctx.fillText(`Min=${R.mn.v.toFixed(2)} dBm @ Phi=${R.mn.p}°, Theta=${R.mn.t}° | Max=${R.mx.v.toFixed(2)} dBm`, X0 + PW / 2, 50);
 
   // colorbar
   const CX = X0 + PW + 14, CW = 38;
