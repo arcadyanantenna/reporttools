@@ -11,185 +11,165 @@
 </script>
 <style>
   :root {
-    color-scheme: dark light;
-    --bg: #0e1117;
-    --fg: #fafafa;
-    --muted: #8b949e;
-    --card-bg: rgba(120, 120, 120, 0.07);
-    --card-border: rgba(120, 120, 120, 0.25);
-    --input-bg: rgba(120, 120, 120, 0.08);
-    --input-border: rgba(120, 120, 120, 0.35);
-    --accent: #4f8cff;
-    --accent-fg: #ffffff;
-    --error-bg: rgba(220, 60, 60, 0.12);
-    --error-fg: #ff8080;
-    --success-bg: rgba(60, 180, 100, 0.12);
-    --success-fg: #6fdc9a;
+    --bg: #0d1117; --card: #161b22; --line: #30363d; --input: #0d1117;
+    --text: #e6edf3; --muted: #8b949e; --primary: #4f8cff; --primary-hover: #6b9dff;
+    --ok-bg: #12261c; --ok: #3fb950; --err-bg: #2d1416; --err: #f85149;
+    color-scheme: dark;
   }
-
-  @media (prefers-color-scheme: light) {
-    :root {
-      --bg: #ffffff;
-      --fg: #14171a;
-      --muted: #6b7280;
-      --card-bg: rgba(120, 120, 120, 0.05);
-      --card-border: rgba(120, 120, 120, 0.2);
-      --input-bg: rgba(120, 120, 120, 0.06);
-      --input-border: rgba(120, 120, 120, 0.3);
-      --error-bg: rgba(220, 60, 60, 0.08);
-      --error-fg: #c92a2a;
-      --success-bg: rgba(60, 180, 100, 0.08);
-      --success-fg: #2b8a3e;
-    }
-  }
-
   * { box-sizing: border-box; }
-
   body {
-    margin: 0;
-    background: var(--bg);
-    color: var(--fg);
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    margin: 0; background: var(--bg); color: var(--text);
+    font-family: "Segoe UI", "Microsoft JhengHei", "PingFang TC", "Noto Sans TC", system-ui, sans-serif;
+    font-size: 14px; line-height: 1.5;
   }
-
-  .wrap { max-width: 1300px; margin: 0 auto; padding: 2rem 1.6rem 4rem; }
-
-  .top-nav { margin-bottom: 1.2rem; }
-  .top-nav a { color: var(--muted); text-decoration: none; font-size: 0.9rem; }
-  .top-nav a:hover { color: var(--fg); }
-
-  h1 { font-size: 1.9rem; font-weight: 800; margin: 0 0 0.2rem; }
-  .caption { color: var(--muted); font-size: 0.92rem; margin-bottom: 1.4rem; }
-
-  .tabs { display: flex; gap: 8px; margin-bottom: 1.4rem; flex-wrap: wrap; }
-  .tab-btn {
-    padding: 10px 16px; border-radius: 10px; border: 1px solid var(--card-border);
-    background: var(--card-bg); color: var(--fg); font-size: 0.92rem; font-weight: 600; cursor: pointer;
+  .wrap { max-width: 1560px; margin: 0 auto; padding: 18px 24px 48px; }
+  .layout { display: grid; grid-template-columns: 300px minmax(0, 1fr); gap: 20px; align-items: start; }
+  aside.side { position: sticky; top: 16px; display: flex; flex-direction: column; gap: 16px; max-height: calc(100vh - 32px); overflow-y: auto; }
+  aside.side .card { padding: 16px; }
+  .main { display: flex; flex-direction: column; gap: 20px; min-width: 0; }
+  .side .field + .field { margin-top: 14px; }
+  .back { color: var(--muted); text-decoration: none; font-size: 14px; }
+  .back:hover { color: var(--text); }
+  h1 { display: flex; align-items: center; gap: 12px; margin: 22px 0 4px; font-size: 30px; font-weight: 800; }
+  h1 .icon { font-size: 30px; }
+  .sub { margin: 0 0 22px; color: var(--muted); font-size: 14px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 20px; }
+  .card h2 { margin: 0 0 10px; font-size: 17px; font-weight: 700; }
+  .desc { margin: 0 0 14px; color: var(--muted); font-size: 12.5px; line-height: 1.6; }
+  .drop {
+    display: block; border: 1.5px dashed #3d4654; border-radius: 10px; background: var(--input);
+    padding: 22px 12px; text-align: center; color: var(--muted); cursor: pointer;
   }
-  .tab-btn.active { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
-  .tab-panel { display: none; }
-  .tab-panel.active { display: block; }
+  .drop.over, .drop:hover { border-color: var(--primary); color: var(--text); }
+  .drop strong { color: var(--primary); }
+  .drop input { display: none; }
 
-  .card {
-    border: 1px solid var(--card-border);
-    border-radius: 14px;
-    background: var(--card-bg);
-    padding: 18px 20px;
-    margin-bottom: 16px;
+  /* file list with editable antenna names */
+  .files { margin: 12px 0 0; display: flex; flex-direction: column; gap: 6px; }
+  .file-item { border: 1px solid var(--line); background: var(--input); border-radius: 8px; padding: 8px 10px; }
+  .file-item .fname { font-size: 11.5px; color: var(--muted); word-break: break-all; margin-bottom: 6px; }
+  .file-item .frow { display: flex; gap: 8px; align-items: center; }
+  .file-item .frow input {
+    flex: 1; min-width: 0; height: 30px; padding: 0 8px; background: var(--card); color: var(--text);
+    border: 1px solid var(--line); border-radius: 6px; font: inherit; font-size: 13px; font-weight: 700;
   }
-  .card h2 { font-size: 1.05rem; font-weight: 700; margin: 0 0 0.9rem; }
+  .file-item .ch { font-size: 12px; color: var(--text); white-space: nowrap; }
+  .file-item .warn { margin-top: 6px; font-size: 11.5px; color: #e3b341; }
 
-  input[type="file"] {
-    width: 100%; padding: 10px; border-radius: 10px;
-    border: 1px dashed var(--input-border); background: var(--input-bg); color: var(--fg);
+  .field label.lbl { display: block; color: var(--muted); font-size: 12.5px; margin-bottom: 5px; }
+  .field select, .field input[type=number] {
+    width: 100%; height: 36px; padding: 0 12px; background: var(--input); color: var(--text);
+    border: 1px solid var(--line); border-radius: 6px; font: inherit;
   }
-  .file-list { margin-top: 8px; font-size: 0.85rem; color: var(--muted); }
-
-  .field-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
-  .field-grid.cols-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
-  .field-grid input, .field-grid select { width: 100%; }
-  .field { display: flex; flex-direction: column; gap: 4px; }
-  .field label { font-size: 0.8rem; color: var(--muted); }
-
-  select, input[type="text"], input[type="number"] {
-    padding: 8px 10px; border-radius: 8px;
-    border: 1px solid var(--input-border); background: var(--input-bg); color: var(--fg); font-size: 0.92rem;
+  .range-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .field .row { display: flex; align-items: center; gap: 10px; height: 36px; }
+  .field .row input[type=range] { flex: 1; accent-color: var(--primary); }
+  .field .row output { min-width: 32px; text-align: right; font-variant-numeric: tabular-nums; }
+  button.primary {
+    width: 100%; border: 0; border-radius: 8px; background: var(--primary); color: #fff; padding: 11px 14px;
+    font: inherit; font-size: 15px; font-weight: 700; cursor: pointer; margin-top: 16px;
   }
-  select { width: 100%; }
-  select option { color: #14171a; background: #ffffff; }
+  button.primary:hover { background: var(--primary-hover); }
+  button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
 
-  .hint { font-size: 0.8rem; color: var(--muted); margin: 0 0 8px; }
-
-  .run-btn {
-    display: block; width: 100%; padding: 12px; border-radius: 10px;
-    border: none; background: var(--accent); color: var(--accent-fg);
-    font-size: 1rem; font-weight: 700; cursor: pointer; margin-top: 4px;
-  }
-  .run-btn:hover { filter: brightness(1.08); }
-
-  .msg { padding: 10px 14px; border-radius: 10px; font-size: 0.9rem; margin-top: 12px; }
-  .msg.error { background: var(--error-bg); color: var(--error-fg); }
-  .msg.success { background: var(--success-bg); color: var(--success-fg); }
-  .msg.info { background: var(--input-bg); color: var(--muted); }
-
-  .result-card { margin-top: 22px; }
-
-  .dl-btn {
-    display: inline-block; margin-top: 10px; padding: 8px 14px; border-radius: 8px;
-    border: 1px solid var(--input-border); background: var(--input-bg); color: var(--fg);
-    font-size: 0.85rem; font-weight: 600; cursor: pointer; text-decoration: none; margin-right: 8px;
-  }
-  .dl-btn:hover { border-color: var(--accent); }
+  .msg { padding: 10px 14px; border-radius: 8px; font-size: 13px; margin-top: 12px; }
+  .msg.success { background: var(--ok-bg); color: var(--ok); }
+  .msg.error { background: var(--err-bg); color: var(--err); }
+  .msg.info { border: 1px dashed var(--line); color: var(--muted); padding: 40px 20px; text-align: center; margin-top: 0; }
 
   .heatmap-grid { display: flex; flex-direction: column; gap: 16px; }
+  .heatmap-item { border-radius: 8px; background: #fff; padding: 8px 8px 10px; }
   .heatmap-item .plot-div { width: 100%; height: 560px; }
-  .heatmap-item { border: 1px solid var(--card-border); border-radius: 10px; padding: 10px; }
+  .dl-btn {
+    display: inline-block; margin: 6px 0 0 6px; padding: 7px 14px; border-radius: 8px;
+    border: 1px solid #c9d1d9; background: #f6f8fa; color: #1f2328;
+    font: inherit; font-size: 13px; font-weight: 600; cursor: pointer;
+  }
+  .dl-btn:hover { border-color: var(--primary); }
 
-  .table-wrap { overflow-x: auto; margin-bottom: 18px; }
-  table.stat { border-collapse: collapse; width: 100%; font-size: 0.9rem; }
-  table.stat th, table.stat td { border: 1px solid var(--card-border); padding: 7px 10px; text-align: center; white-space: nowrap; }
-  table.stat th { background: var(--input-bg); font-weight: 700; }
-  table.stat td:first-child { font-weight: 700; }
-  .stat-title { font-size: 0.95rem; font-weight: 700; margin: 4px 0 4px; }
-  .stat-rule { font-size: 0.8rem; color: var(--muted); margin-bottom: 8px; }
-
-  table.stat input[type="text"] { width: 120px; padding: 5px 8px; text-align: center; }
+  .tbl-wrap { overflow-x: auto; }
+  table.stats { width: 100%; border-collapse: collapse; font-size: 13.5px; font-variant-numeric: tabular-nums; }
+  table.stats th, table.stats td { border: 1px solid var(--line); padding: 9px 12px; text-align: center; white-space: nowrap; }
+  table.stats thead th { background: #1c232c; color: var(--text); font-weight: 700; line-height: 1.35; }
+  table.stats td:first-child { font-weight: 700; }
+  table.stats tr.comp td { background: #1a2433; }
+  .card h3 { margin: 22px 0 2px; font-size: 15px; font-weight: 700; }
+  .card h3:first-of-type { margin-top: 6px; }
+  .note { margin: 0 0 10px; color: var(--muted); font-size: 12.5px; }
+  .foot { margin: 16px 0 0; color: var(--muted); font-size: 12.5px; }
   [hidden] { display: none !important; }
+  @media (max-width: 900px) {
+    .layout { grid-template-columns: 1fr; }
+    aside.side { position: static; max-height: none; }
+    h1 { font-size: 24px; }
+  }
 </style>
 </head>
 <body>
 <div class="wrap">
-  <div class="top-nav"><a href="./index.html">&larr; 回入口頁</a></div>
-  <h1>📡 TRP Heatmap</h1>
-  <div class="caption">上傳 EMQuest TRP CSV,產生 Theta / Phi / Total Heatmap 與 Total 半球統計(上下、前後、左右)。</div>
+  <a class="back" href="./index.html">← 回入口頁</a>
+  <h1><span class="icon" aria-hidden="true">📡</span>TRP Heatmap</h1>
+  <p class="sub">上傳 EMQuest TRP CSV,產生 Theta / Phi / Total Heatmap 與 Total 半球統計(上下、前後、左右)。</p>
 
-  <div class="tabs">
-    <button class="tab-btn active" data-tab="tab1">① 上傳 TRP CSV</button>
-    <button class="tab-btn" data-tab="tab2">② 產生 Heatmap</button>
-    <button class="tab-btn" data-tab="tab3">③ 半球統計</button>
-  </div>
+  <div class="layout">
+    <aside class="side">
+      <section class="card">
+        <h2>① 上傳 TRP CSV</h2>
+        <p class="desc">可一次選多個 CSV(EMQuest TRP 匯出格式)。同一頻道有 2 個以上天線時,會另外產生 Composite。天線名稱可在下方修改,會用在圖的標題與統計表。</p>
+        <label class="drop" id="drop">
+          <input type="file" id="csv-input" accept=".csv" multiple />
+          <strong>選擇 CSV</strong> 或拖曳到這裡
+        </label>
+        <div id="load-msg-box"></div>
+        <div id="file-table-box"></div>
+      </section>
 
-  <!-- TAB 1 -->
-  <div class="tab-panel active" id="tab1">
-    <div class="card">
-      <h2>① 上傳 TRP CSV</h2>
-      <div class="hint">可一次選多個 CSV(EMQuest TRP 匯出格式)。同一頻道有 2 個以上天線時,會另外產生 Composite。</div>
-      <input type="file" id="csv-input" accept=".csv" multiple />
-      <div class="file-list" id="csv-file-list"></div>
-      <div id="load-msg-box"></div>
-      <div id="file-table-box"></div>
-    </div>
-  </div>
-
-  <!-- TAB 2 -->
-  <div class="tab-panel" id="tab2">
-    <div class="card">
-      <h2>② 產生 Heatmap</h2>
-      <div class="hint">圖面以 bicubic 內插平滑顯示,游標顯示的是最接近的 15° 原始量測值;半球統計與 Composite Max 皆以原始量測值計算。所有圖共用同一個色階;vmin / vmax / step 留空則依所選極化的各天線資料自動決定。同一頻道有 2 個以上天線時,接著畫 Composite(逐點取最大值)。</div>
-      <div class="field-grid cols-4">
-        <div class="field"><label>極化</label>
+      <section class="card">
+        <h2>② Heatmap 設定</h2>
+        <div class="field">
+          <label class="lbl" for="hm-pol">極化</label>
           <select id="hm-pol">
             <option value="Total">Total</option>
             <option value="Theta">Theta</option>
             <option value="Phi">Phi</option>
           </select>
         </div>
-        <div class="field"><label>vmin（留空 = 自動）</label><input type="number" id="hm-vmin"></div>
-        <div class="field"><label>vmax（留空 = 自動）</label><input type="number" id="hm-vmax"></div>
-        <div class="field"><label>step（留空 = 自動）</label><input type="number" id="hm-step" min="0"></div>
-      </div>
-      <button class="run-btn" id="gen-heatmap-btn" style="margin-top:12px;">產生 Heatmap</button>
-      <div id="heatmap-msg-box"></div>
-    </div>
-    <div id="heatmap-results"></div>
-  </div>
+        <div class="field">
+          <label class="lbl" for="hm-soft">柔和度(只影響顯示)</label>
+          <div class="row"><input type="range" id="hm-soft" min="0" max="25" step="1" value="10"><output id="hm-soft-out">10°</output></div>
+        </div>
+        <div class="field range-pair">
+          <div>
+            <label class="lbl" for="hm-vmin">vmin(留空 = 自動)</label>
+            <input type="number" id="hm-vmin">
+          </div>
+          <div>
+            <label class="lbl" for="hm-vmax">vmax(留空 = 自動)</label>
+            <input type="number" id="hm-vmax">
+          </div>
+        </div>
+        <div class="field">
+          <label class="lbl" for="hm-step">step(留空 = 自動)</label>
+          <input type="number" id="hm-step" min="0">
+        </div>
+        <button class="primary" id="gen-heatmap-btn">產生 Heatmap</button>
+      </section>
+    </aside>
 
-  <!-- TAB 3 -->
-  <div class="tab-panel" id="tab3">
-    <div class="card">
-      <h2>③ 半球統計(Total,dBm)</h2>
-      <div class="hint">平均 = dBm 數值直接平均;邊界同時計入兩個半球,「不含邊界」則排除邊界那一條。φ360° 與 φ0° 為同一點,不重複計入。</div>
-      <div id="stats-box"><div class="msg info">請先在第①步上傳 CSV。</div></div>
+    <div class="main">
+      <section class="card">
+        <h2>Heatmap</h2>
+        <p class="desc">圖面以 bicubic 內插平滑顯示,再依「柔和度」做高斯暈染(0° = 不暈染);游標顯示的是最接近的 15° 原始量測值;半球統計與 Composite Max 皆以原始量測值計算。所有圖共用同一個色階;vmin / vmax / step 留空則依所選極化的各天線資料自動決定。同一頻道有 2 個以上天線時,接著畫 Composite(逐點取最大值)。</p>
+        <div id="heatmap-empty" class="msg info">從左邊上傳 TRP CSV,再按「產生 Heatmap」。</div>
+        <div id="heatmap-results"></div>
+        <div id="heatmap-msg-box"></div>
+      </section>
+
+      <section class="card">
+        <h2>半球統計(Total,dBm)</h2>
+        <p class="desc">平均 = dBm 數值直接平均;邊界同時計入兩個半球,「不含邊界」則排除邊界那一條。φ360° 與 φ0° 為同一點,不重複計入。</p>
+        <div id="stats-box"><div class="msg info">從左邊上傳 TRP CSV 後顯示。</div></div>
+      </section>
     </div>
   </div>
 </div>
@@ -332,6 +312,30 @@ function upsampleForDisplay(mat) {
     });
   });
 }
+// 邊緣暈染:對 1° 顯示格點做高斯模糊(σ 單位 = 度);φ 方向 0°/360° 頭尾相接,θ 方向兩端夾住。只影響畫面。
+function blurForDisplay(z, sigma) {
+  if (!(sigma > 0)) return z;
+  const r = Math.ceil(3 * sigma), k = [];
+  let sum = 0;
+  for (let i = -r; i <= r; i++) { const v = Math.exp(-i * i / (2 * sigma * sigma)); k.push(v); sum += v; }
+  for (let i = 0; i < k.length; i++) k[i] /= sum;
+  const nT = z.length, nP = z[0].length, per = nP - 1;           // 最後一欄 = φ360 = φ0
+  const tmp = z.map(row => {
+    const out = new Array(nP);
+    for (let j = 0; j < per; j++) {
+      let s = 0;
+      for (let m = -r; m <= r; m++) s += k[m + r] * row[(((j + m) % per) + per) % per];
+      out[j] = s;
+    }
+    out[per] = out[0];
+    return out;
+  });
+  return tmp.map((row, i) => row.map((_, j) => {
+    let s = 0;
+    for (let m = -r; m <= r; m++) s += k[m + r] * tmp[Math.min(nT - 1, Math.max(0, i + m))][j];
+    return s;
+  }));
+}
 // 游標顯示:最接近的原始量測點(角度 + 數值)
 function nearestMeasured(mat) {
   return FINE_TH.map(t => {
@@ -341,16 +345,6 @@ function nearestMeasured(mat) {
 }
 // ==== END CORE ====
 
-
-// ---------- tab switching ----------
-document.querySelectorAll(".tab-btn").forEach(btn => {
-  btn.addEventListener("click", () => {
-    document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
-    document.querySelectorAll(".tab-panel").forEach(p => p.classList.remove("active"));
-    btn.classList.add("active");
-    document.getElementById(btn.dataset.tab).classList.add("active");
-  });
-});
 
 function showMsg(boxId, text, type) {
   document.getElementById(boxId).innerHTML = `<div class="msg ${type}">${text}</div>`;
@@ -392,10 +386,10 @@ function rangeInclusive(min, max, step) {
 // ============================================================
 // Heatmap (same look as Antenna Heatmap, Comcast layout)
 // ============================================================
-function renderHeatmapPanel(divId, label, pol, freqLabel, matrix, vmin, vmax, step, subtitle) {
+function renderHeatmapPanel(divId, label, pol, freqLabel, matrix, vmin, vmax, step, subtitle, soft) {
   const trace = {
     type: "heatmap",
-    z: upsampleForDisplay(matrix),
+    z: blurForDisplay(upsampleForDisplay(matrix), soft),
     x: FINE_PH,
     y: FINE_TH,
     customdata: nearestMeasured(matrix),
@@ -429,18 +423,30 @@ function downloadHeatmapPng(divId, filename) {
 }
 
 // ============================================================
-// State + Tab 1
+// State + upload
 // ============================================================
 let datasets = [];   // { name, meta, mats, summary }
 
 const csvInput = document.getElementById("csv-input");
+const drop = document.getElementById("drop");
+["dragenter", "dragover"].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add("over"); }));
+["dragleave", "drop"].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove("over"); }));
+drop.addEventListener("drop", e => {
+  const dt = new DataTransfer();
+  Array.from(e.dataTransfer.files).filter(f => /\.csv$/i.test(f.name)).forEach(f => dt.items.add(f));
+  if (!dt.files.length) return;
+  csvInput.files = dt.files;
+  csvInput.dispatchEvent(new Event("change"));
+});
+
 csvInput.addEventListener("change", async () => {
   const files = Array.from(csvInput.files);
-  document.getElementById("csv-file-list").textContent = files.length ? "已選擇：" + files.map(f => f.name).join("、") : "";
   document.getElementById("load-msg-box").innerHTML = "";
   document.getElementById("heatmap-results").innerHTML = "";
+  document.getElementById("heatmap-msg-box").innerHTML = "";
+  document.getElementById("heatmap-empty").hidden = false;
   datasets = [];
-  if (!files.length) { renderStats(); return; }
+  if (!files.length) { renderFileTable(); renderStats(); return; }
 
   const errors = [];
   for (const f of files) {
@@ -459,7 +465,7 @@ csvInput.addEventListener("change", async () => {
 
   datasets.forEach(d => { d.ant = d.meta.ant; });
   let html = "";
-  if (datasets.length) html += `<div class="msg success">✅ 已讀取 ${datasets.length} 個檔案。天線名稱可在下表修改(會用在圖的標題與統計表)。</div>`;
+  if (datasets.length) html += `<div class="msg success">✅ 已讀取 ${datasets.length} 個檔案</div>`;
   if (errors.length) html += `<div class="msg error">❌ ${errors.join("<br>")}</div>`;
   document.getElementById("load-msg-box").innerHTML = html;
   renderFileTable();
@@ -474,24 +480,29 @@ function groupsOf(list) {
   return Array.from(map.values());
 }
 
+// sidebar file list: file name + editable antenna name + channel
 function renderFileTable() {
   const box = document.getElementById("file-table-box");
   if (!datasets.length) { box.innerHTML = ""; return; }
-  const rows = datasets.map((d, i) => {
+  const items = datasets.map((d, i) => {
     const warn = [];
     if (d.missing.length) warn.push(`缺少 ${d.missing.join("/")}`);
     if (d.nan) warn.push(`${d.nan} 個空白點`);
-    return `<tr><td style="text-align:left;font-weight:400;">${escapeHtml(d.name)}</td>
-      <td><input type="text" data-idx="${i}" class="ant-input" value="${escapeHtml(d.ant)}"></td>
-      <td>${escapeHtml(groupLabel(d))}</td><td>${warn.length ? "⚠️ " + warn.join(",") : "—"}</td></tr>`;
+    return `<div class="file-item">
+      <div class="fname">${escapeHtml(d.name)}</div>
+      <div class="frow">
+        <input type="text" data-idx="${i}" class="ant-input" value="${escapeHtml(d.ant)}" aria-label="天線名稱">
+        <span class="ch">${escapeHtml(groupLabel(d))}</span>
+      </div>
+      ${warn.length ? `<div class="warn">⚠️ ${warn.join(",")}</div>` : ""}
+    </div>`;
   }).join("");
   const dupMsgs = groupsOf(datasets).map(g => {
     const names = g.map(d => d.ant);
     const dup = names.filter((n, i) => names.indexOf(n) !== i);
     return dup.length ? `${escapeHtml(groupLabel(g[0]))} 有重複的天線名稱:${escapeHtml(Array.from(new Set(dup)).join("、"))}` : "";
   }).filter(Boolean);
-  box.innerHTML = `<div class="table-wrap" style="margin-top:12px;"><table class="stat">
-    <tr><th>檔案</th><th>天線名稱</th><th>頻道</th><th>備註</th></tr>${rows}</table></div>` +
+  box.innerHTML = `<div class="files">${items}</div>` +
     (dupMsgs.length ? `<div class="msg error">⚠️ ${dupMsgs.join("<br>")}</div>` : "");
   box.querySelectorAll(".ant-input").forEach(inp => {
     inp.addEventListener("change", () => {
@@ -503,15 +514,21 @@ function renderFileTable() {
 }
 
 // ============================================================
-// Tab 2
+// Heatmap
 // ============================================================
+const softEl = document.getElementById("hm-soft");
+softEl.addEventListener("input", () => { document.getElementById("hm-soft-out").textContent = softEl.value + "°"; });
+softEl.addEventListener("change", () => {
+  if (document.querySelector("#heatmap-results .plot-div")) document.getElementById("gen-heatmap-btn").click();
+});
+
 document.getElementById("gen-heatmap-btn").addEventListener("click", () => {
   const resultsEl = document.getElementById("heatmap-results");
   resultsEl.innerHTML = "";
   document.getElementById("heatmap-msg-box").innerHTML = "";
   try {
     if (!window.Plotly) throw new Error("繪圖元件 Plotly 載入失敗(cdnjs.cloudflare.com 與 cdn.plot.ly 都連不到),請確認網路或防火牆設定後重新整理頁面。");
-    if (!datasets.length) throw new Error("請先在第①步上傳 TRP CSV。");
+    if (!datasets.length) throw new Error("請先在左邊上傳 TRP CSV。");
     const pol = document.getElementById("hm-pol").value;
     const list = datasets.filter(d => d.mats[pol]);
     if (!list.length) throw new Error(`上傳的檔案中沒有 ${pol} 資料。`);
@@ -522,8 +539,10 @@ document.getElementById("gen-heatmap-btn").addEventListener("click", () => {
     let vmin = vminEl === "" ? Math.min(...list.map(d => nanminMat(d.mats[pol]))) : parseFloat(vminEl);
     let vmax = vmaxEl === "" ? Math.max(...list.map(d => nanmaxMat(d.mats[pol]))) : parseFloat(vmaxEl);
     const step = stepEl === "" ? null : parseFloat(stepEl);
+    const soft = +document.getElementById("hm-soft").value;
     if (vmin >= vmax) vmax = vmin + 1e-6;
 
+    document.getElementById("heatmap-empty").hidden = true;
     const grid = document.createElement("div");
     grid.className = "heatmap-grid";
     resultsEl.appendChild(grid);
@@ -549,19 +568,19 @@ document.getElementById("gen-heatmap-btn").addEventListener("click", () => {
       const pngName = p.freqLabel ? `${p.label}_${pol}_${p.freqLabel}MHz_TRP.png` : `${p.label}_${pol}_TRP.png`;
       item.innerHTML = `<div class="plot-div" id="${divId}"></div><button class="dl-btn" id="${divId}-dl">⬇️ ${escapeHtml(pngName)}</button>`;
       grid.appendChild(item);
-      renderHeatmapPanel(divId, p.label, pol, p.freqLabel, p.matrix, vmin, vmax, step, p.subtitle);
+      renderHeatmapPanel(divId, p.label, pol, p.freqLabel, p.matrix, vmin, vmax, step, p.subtitle, soft);
       document.getElementById(`${divId}-dl`).addEventListener("click", () => downloadHeatmapPng(divId, pngName));
     });
 
     const skipped = datasets.length - list.length;
-    showMsg("heatmap-msg-box", `✅ Heatmap 已完成(色階 ${vmin.toFixed(2)} ~ ${vmax.toFixed(2)} dBm)${compCount ? `,含 ${compCount} 組 Composite` : ",各頻道只有 1 個天線,未產生 Composite"}${skipped ? `,${skipped} 個檔案缺少 ${pol} 資料已略過` : ""}`, "success");
+    showMsg("heatmap-msg-box", `✅ Heatmap 已完成(色階 ${vmin.toFixed(2)} ~ ${vmax.toFixed(2)} dBm,柔和度 ${soft}°)${compCount ? `,含 ${compCount} 組 Composite` : ",各頻道只有 1 個天線,未產生 Composite"}${skipped ? `,${skipped} 個檔案缺少 ${pol} 資料已略過` : ""}`, "success");
   } catch (err) {
     showMsg("heatmap-msg-box", "❌ " + err.message, "error");
   }
 });
 
 // ============================================================
-// Tab 3 — hemisphere stats (Total)
+// Hemisphere stats (Total)
 // ============================================================
 function fmt(v) { return Number.isFinite(v) ? v.toFixed(2) : "—"; }
 
@@ -569,7 +588,7 @@ function renderStats() {
   const box = document.getElementById("stats-box");
   const list = datasets.filter(d => d.mats.Total);
   if (!list.length) {
-    box.innerHTML = `<div class="msg info">${datasets.length ? "上傳的檔案中沒有 Total 資料。" : "請先在第①步上傳 CSV。"}</div>`;
+    box.innerHTML = `<div class="msg info">${datasets.length ? "上傳的檔案中沒有 Total 資料。" : "從左邊上傳 TRP CSV 後顯示。"}</div>`;
     return;
   }
   const stats = [];
@@ -578,13 +597,13 @@ function renderStats() {
     if (g.length >= 2) stats.push({ name: `Composite / ${groupLabel(g[0])}`, s: hemiStats(composite(g.map(d => d.mats.Total))), comp: true });
   });
   box.innerHTML = HEMIS.map(h => {
-    const head = `<tr><th>天線 / 頻道</th><th>${h.a} Avg</th><th>${h.b} Avg</th><th>${h.a} Max<br>(含邊界)</th><th>${h.b} Max<br>(含邊界)</th><th>${h.a} Max<br>(不含邊界)</th><th>${h.b} Max<br>(不含邊界)</th></tr>`;
+    const head = `<thead><tr><th>天線 / 頻道</th><th>${h.a} Avg</th><th>${h.b} Avg</th><th>${h.a} Max<br>(含邊界)</th><th>${h.b} Max<br>(含邊界)</th><th>${h.a} Max<br>(不含邊界)</th><th>${h.b} Max<br>(不含邊界)</th></tr></thead>`;
     const rows = stats.map(({ name, s, comp }) => {
       const r = s[h.key];
-      return `<tr${comp ? ' style="background:var(--input-bg);"' : ""}><td>${escapeHtml(name)}</td><td>${fmt(r.avgA)}</td><td>${fmt(r.avgB)}</td><td>${fmt(r.maxA)}</td><td>${fmt(r.maxB)}</td><td>${fmt(r.maxAx)}</td><td>${fmt(r.maxBx)}</td></tr>`;
+      return `<tr${comp ? ' class="comp"' : ""}><td>${escapeHtml(name)}</td><td>${fmt(r.avgA)}</td><td>${fmt(r.avgB)}</td><td>${fmt(r.maxA)}</td><td>${fmt(r.maxB)}</td><td>${fmt(r.maxAx)}</td><td>${fmt(r.maxBx)}</td></tr>`;
     }).join("");
-    return `<div class="stat-title">${h.title}</div><div class="stat-rule">${h.rule}</div><div class="table-wrap"><table class="stat">${head}${rows}</table></div>`;
-  }).join("") + `<div class="hint">單位:dBm。Composite = 同一頻道各天線 Total 逐點取最大值後再計算。</div>`;
+    return `<h3>${h.title}</h3><p class="note">${h.rule}</p><div class="tbl-wrap"><table class="stats">${head}<tbody>${rows}</tbody></table></div>`;
+  }).join("") + `<p class="foot">單位:dBm。Composite = 同一頻道各天線 Total 逐點取最大值後再計算。</p>`;
 }
 </script>
 </body>
