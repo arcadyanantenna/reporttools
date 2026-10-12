@@ -1,0 +1,577 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TIS Heatmap</title>
+<style>
+  :root {
+    --bg: #0d1117; --card: #161b22; --line: #30363d; --input: #0d1117;
+    --text: #e6edf3; --muted: #8b949e; --primary: #4f8cff; --primary-hover: #6b9dff;
+    --ok-bg: #12261c; --ok: #3fb950; --err-bg: #2d1416; --err: #f85149;
+    color-scheme: dark;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font-family: "Segoe UI", "Microsoft JhengHei", "PingFang TC", "Noto Sans TC", system-ui, sans-serif;
+    font-size: 14px; line-height: 1.5;
+  }
+  .wrap { max-width: 1560px; margin: 0 auto; padding: 18px 24px 48px; }
+  .layout { display: grid; grid-template-columns: 300px minmax(0, 1fr); gap: 20px; align-items: start; }
+  aside.side { position: sticky; top: 16px; display: flex; flex-direction: column; gap: 16px; }
+  aside.side .card { padding: 16px; }
+  .main { display: flex; flex-direction: column; gap: 20px; min-width: 0; }
+  .side .field + .field { margin-top: 14px; }
+  .side .check { margin: 14px 0 0; }
+  .side button.primary { margin-top: 0; }
+  .back { color: var(--muted); text-decoration: none; font-size: 14px; }
+  .back:hover { color: var(--text); }
+  h1 { display: flex; align-items: center; gap: 12px; margin: 22px 0 4px; font-size: 30px; font-weight: 800; }
+  h1 .icon { font-size: 30px; }
+  .sub { margin: 0 0 22px; color: var(--muted); font-size: 14px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 20px; }
+  .card h2 { margin: 0 0 10px; font-size: 17px; font-weight: 700; }
+  .desc { margin: 0 0 14px; color: var(--muted); font-size: 12.5px; line-height: 1.6; }
+  .drop {
+    display: block; border: 1.5px dashed #3d4654; border-radius: 10px; background: var(--input);
+    padding: 22px 12px; text-align: center; color: var(--muted); cursor: pointer;
+  }
+  .drop.over, .drop:hover { border-color: var(--primary); color: var(--text); }
+  .drop strong { color: var(--primary); }
+  .drop input { display: none; }
+  .files { list-style: none; margin: 12px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; max-height: 260px; overflow-y: auto; }
+  .files li button {
+    width: 100%; text-align: left; border: 1px solid var(--line); background: var(--input); padding: 7px 10px;
+    border-radius: 8px; font: inherit; font-size: 12px; color: var(--text); cursor: pointer; word-break: break-all;
+  }
+  .files li button:hover { border-color: #4a5260; }
+  .files li button[aria-current="true"] { border-color: var(--primary); box-shadow: inset 3px 0 0 var(--primary); }
+  .controls { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 14px; }
+  .field label.lbl { display: block; color: var(--muted); font-size: 12.5px; margin-bottom: 5px; }
+  .field select, .field input[type=number] {
+    width: 100%; height: 36px; padding: 0 12px; background: var(--input); color: var(--text);
+    border: 1px solid var(--line); border-radius: 6px; font: inherit;
+  }
+  .field .row { display: flex; align-items: center; gap: 10px; height: 36px; }
+  .field .row input[type=range] { flex: 1; accent-color: var(--primary); }
+  .field .row output { min-width: 32px; text-align: right; font-variant-numeric: tabular-nums; }
+  .check { display: flex; gap: 8px; align-items: center; margin-bottom: 14px; font-size: 13px; color: var(--muted); }
+  .check input { accent-color: var(--primary); }
+  button.primary {
+    width: 100%; border: 0; border-radius: 8px; background: var(--primary); color: #fff; padding: 11px 14px;
+    font: inherit; font-size: 15px; font-weight: 700; cursor: pointer; margin-top: 14px;
+  }
+  button.primary:hover { background: var(--primary-hover); }
+  button.primary:disabled { background: #2b3a55; color: #7d8aa3; cursor: default; }
+  button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+  .status { margin-top: 12px; padding: 10px 14px; border-radius: 8px; font-size: 13px; background: var(--ok-bg); color: var(--ok); }
+  .status.bad, .err { background: var(--err-bg); color: var(--err); }
+  .err { margin: 12px 0 0; padding: 10px 14px; border-radius: 8px; font-size: 13px; }
+  .canvas-wrap { overflow-x: auto; border-radius: 8px; }
+  canvas { display: block; width: 100%; height: auto; background: #fff; border-radius: 8px; }
+  .empty { border: 1px dashed var(--line); border-radius: 10px; padding: 50px 20px; text-align: center; color: var(--muted); }
+  .tbl-wrap { overflow-x: auto; }
+  table.stats { width: 100%; border-collapse: collapse; font-size: 13.5px; font-variant-numeric: tabular-nums; }
+  table.stats th, table.stats td { border: 1px solid var(--line); padding: 9px 12px; text-align: center; }
+  table.stats thead th { background: #1c232c; color: var(--text); font-weight: 700; line-height: 1.35; }
+  table.stats td.name { font-weight: 700; min-width: 220px; }
+  table.stats td.name small { display: block; font-weight: 400; color: var(--muted); font-size: 11.5px; word-break: break-all; }
+  .card h3 { margin: 22px 0 2px; font-size: 15px; font-weight: 700; }
+  .card h3:first-of-type { margin-top: 6px; }
+  .note { margin: 0 0 10px; color: var(--muted); font-size: 12.5px; }
+  .foot { margin: 16px 0 0; color: var(--muted); font-size: 12.5px; }
+  .range-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  @media (max-width: 900px) { .layout { grid-template-columns: 1fr; } aside.side { position: static; } h1 { font-size: 24px; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <a class="back" href="index.html">← 回入口頁</a>
+  <h1><span class="icon" aria-hidden="true">📡</span>TIS Heatmap</h1>
+  <p class="sub">上傳 Arcadyan chamber TIS CSV,產生 Theta / Phi / Total Heatmap 與四象限 Avg TIS 統計。</p>
+
+  <div class="layout">
+    <aside class="side">
+      <section class="card">
+        <h2>① 上傳 TIS CSV</h2>
+        <p class="desc">Arcadyan chamber 匯出的 TIS CSV,自動轉成標準球座標(θ 0~180°、φ 0~360°)。可一次放多個檔案,只在瀏覽器內處理。</p>
+        <label class="drop" id="drop">
+          <input type="file" id="file" accept=".csv" multiple>
+          <strong>選擇 CSV</strong> 或拖曳到這裡
+        </label>
+        <ul class="files" id="files"></ul>
+        <p class="err" id="err" hidden></p>
+      </section>
+
+      <section class="card">
+        <h2>② Heatmap 設定</h2>
+        <div class="field">
+          <label class="lbl" for="pol">極化</label>
+          <select id="pol"><option>Total</option><option>Theta</option><option>Phi</option></select>
+        </div>
+        <div class="field">
+          <label class="lbl" for="soft">柔和度(只影響顯示)</label>
+          <div class="row"><input type="range" id="soft" min="0" max="25" step="1" value="10"><output id="softOut">10°</output></div>
+        </div>
+        <div class="field range-pair">
+          <div>
+            <label class="lbl" for="vmin">vmin(留空 = 自動)</label>
+            <input type="number" id="vmin" value="86" step="1">
+          </div>
+          <div>
+            <label class="lbl" for="vmax">vmax(留空 = 自動)</label>
+            <input type="number" id="vmax" value="102" step="1">
+          </div>
+        </div>
+        <label class="check"><input type="checkbox" id="showQuad" checked> 顯示四象限 Avg TIS 標籤</label>
+      </section>
+
+      <button class="primary" id="dl" disabled>下載 PNG</button>
+    </aside>
+
+    <div class="main">
+      <section class="card">
+        <h2>Heatmap</h2>
+        <p class="desc">球面 RBF(thin-plate spline)內插,再依「柔和度」做高斯暈染;Avg TIS、Min / Max 一律以未暈染的資料計算,Min / Max 取原始量測點。</p>
+        <div class="empty" id="empty">從左邊上傳 TIS CSV 開始。</div>
+        <div class="canvas-wrap"><canvas id="cv" width="2440" height="1480" hidden></canvas></div>
+        <div class="status" id="status" hidden></div>
+      </section>
+
+      <section class="card" id="tab-stats">
+        <h2>半球統計(Total,dBm)</h2>
+        <p class="desc">半球 Avg / Max 以 30° 原始量測值計算:平均 = dBm 數值直接平均;邊界同時計入兩個半球,「不含邊界」則排除邊界那一條。φ360° 與 φ0° 為同一點,不重複計入;θ0° / θ180° 極點在每個 φ 各計一次。數值為檔案原始的靈敏度值(與 Heatmap 色階相同,數字越大靈敏度越好)。</p>
+        <div class="empty" id="emptyStats">從左邊上傳 TIS CSV 後顯示。</div>
+        <div id="statsBody" hidden>
+          <h3>上 / 下半球</h3>
+          <p class="note">上 = θ 0–90°,下 = θ 90–180°;邊界 θ90°</p>
+          <div class="tbl-wrap"><table class="stats" id="hUD"></table></div>
+          <h3>前 / 後半球</h3>
+          <p class="note">前 = φ 0–180°,後 = φ 180–360°;邊界 φ0°(=360°)、φ180°</p>
+          <div class="tbl-wrap"><table class="stats" id="hFB"></table></div>
+          <h3>左 / 右半球</h3>
+          <p class="note">左 = φ 270–90°,右 = φ 90–270°;邊界 φ90°、φ270°</p>
+          <div class="tbl-wrap"><table class="stats" id="hLR"></table></div>
+          <h3>Avg TIS(sinθ 加權)</h3>
+          <p class="note">TIS = −10·log10(Σ10<sup>S/10</sup>·sinθ / Σsinθ),以球面內插後 1° 格點計算;四象限即 Heatmap 上的 Avg TIS 標籤。</p>
+          <div class="tbl-wrap"><table class="stats" id="hTIS"></table></div>
+        </div>
+        <p class="foot">單位:dBm。每個上傳的檔案一列,固定使用 Total 極化。</p>
+      </section>
+    </div>
+  </div>
+</div>
+<script>
+/* ===================== core (parse / interpolate / stats) ===================== */
+const TIS_CORE = (() => {
+  function parseCSV(text) {
+    const lines = text.replace(/\r\n?/g, '\n').split('\n');
+    const blocks = {};
+    for (const pol of ['Theta', 'Phi', 'Total']) {
+      const i = lines.findIndex(l => l.startsWith(pol + ',Phi Angle'));
+      if (i < 0) continue;
+      const phis = lines[i].split(',').slice(2).filter(s => s.trim() !== '').map(Number);
+      const rows = [];
+      for (let k = i + 2; k < lines.length; k++) {
+        const c = lines[k].split(',');
+        if (c.length < 3 || c[1].trim() === '' || isNaN(+c[1])) break;
+        rows.push({ theta: +c[1], vals: phis.map((_, j) => +c[2 + j]) });
+      }
+      blocks[pol] = { phis, rows };
+    }
+    const meta = {};
+    for (const l of lines) {
+      const c = l.split(',');
+      if (c[1] && c[1].trim() === 'TIS (dBm)') meta.tis = +c[2];
+    }
+    return { blocks, meta };
+  }
+
+  // Arcadyan great-circle cut (theta -180..180, phi 0..180) -> standard sphere (theta 0..180, phi 0..360)
+  function toSphere(block) {
+    const map = new Map();
+    for (const r of block.rows) {
+      block.phis.forEach((p, j) => {
+        let t = r.theta, ph = p;
+        if (t < 0) { t = -t; ph = p + 180; }
+        ph = ((ph % 360) + 360) % 360;
+        if (t === 0 || t === 180) ph = 0;               // pole: single point
+        const key = t + '_' + ph;
+        if (!map.has(key)) map.set(key, { t, p: ph, s: 0, n: 0 });
+        const e = map.get(key); e.s += r.vals[j]; e.n++;
+      });
+    }
+    return [...map.values()].map(e => ({ t: e.t, p: e.p, v: e.s / e.n }));
+  }
+
+  const D2R = Math.PI / 180;
+  const xyz = (t, p) => [Math.sin(t * D2R) * Math.cos(p * D2R), Math.sin(t * D2R) * Math.sin(p * D2R), Math.cos(t * D2R)];
+
+  function solve(A, b) {
+    const n = b.length;
+    for (let c = 0; c < n; c++) {
+      let piv = c;
+      for (let r = c + 1; r < n; r++) if (Math.abs(A[r][c]) > Math.abs(A[piv][c])) piv = r;
+      [A[c], A[piv]] = [A[piv], A[c]]; [b[c], b[piv]] = [b[piv], b[c]];
+      for (let r = c + 1; r < n; r++) {
+        const f = A[r][c] / A[c][c];
+        if (!f) continue;
+        for (let k = c; k < n; k++) A[r][k] -= f * A[c][k];
+        b[r] -= f * b[c];
+      }
+    }
+    const x = new Array(n).fill(0);
+    for (let r = n - 1; r >= 0; r--) {
+      let s = b[r];
+      for (let k = r + 1; k < n; k++) s -= A[r][k] * x[k];
+      x[r] = s / A[r][r];
+    }
+    return x;
+  }
+
+  // thin-plate spline on unit sphere (chord distance), kernel r^2 ln r, linear polynomial tail
+  const tps = r2 => r2 > 0 ? 0.5 * r2 * Math.log(r2) : 0;
+  function buildRBF(pts) {
+    const X = pts.map(q => xyz(q.t, q.p)), n = X.length, m = n + 4;
+    const A = Array.from({ length: m }, () => new Array(m).fill(0)), b = new Array(m).fill(0);
+    for (let i = 0; i < n; i++) {
+      for (let j = 0; j < n; j++) {
+        const d = 2 - 2 * (X[i][0] * X[j][0] + X[i][1] * X[j][1] + X[i][2] * X[j][2]);
+        A[i][j] = tps(Math.max(d, 0));
+      }
+      const P = [1, X[i][0], X[i][1], X[i][2]];
+      for (let k = 0; k < 4; k++) { A[i][n + k] = P[k]; A[n + k][i] = P[k]; }
+      b[i] = pts[i].v;
+    }
+    const w = solve(A, b);
+    const W = new Float64Array(w.slice(0, n)), c = w.slice(n);
+    const Xf = new Float64Array(n * 3); X.forEach((v, i) => Xf.set(v, i * 3));
+    return function (x, y, z) {
+      let s = c[0] + c[1] * x + c[2] * y + c[3] * z;
+      for (let i = 0; i < n; i++) {
+        const d = 2 - 2 * (x * Xf[3 * i] + y * Xf[3 * i + 1] + z * Xf[3 * i + 2]);
+        if (d > 0) s += W[i] * 0.5 * d * Math.log(d);
+      }
+      return s;
+    };
+  }
+
+  // evaluate on a regular grid; thetas/phis are arrays in degrees
+  function grid(f, thetas, phis) {
+    const out = new Float64Array(thetas.length * phis.length);
+    const cp = phis.map(p => Math.cos(p * D2R)), sp = phis.map(p => Math.sin(p * D2R));
+    thetas.forEach((t, i) => {
+      const st = Math.sin(t * D2R), ct = Math.cos(t * D2R);
+      for (let j = 0; j < phis.length; j++) out[i * phis.length + j] = f(st * cp[j], st * sp[j], ct);
+    });
+    return out;
+  }
+
+  // TIS = -10 log10( sum(10^(S/10) sin t) / sum(sin t) ),  S = positive sensitivity magnitude
+  function tis(vals, thetas, nphi, sel) {
+    let num = 0, den = 0;
+    thetas.forEach((t, i) => {
+      const w = Math.sin(t * D2R);
+      for (let j = 0; j < nphi; j++) if (!sel || sel(i, j)) { num += Math.pow(10, vals[i * nphi + j] / 10) * w; den += w; }
+    });
+    return -10 * Math.log10(num / den);
+  }
+
+  // separable gaussian blur: phi wraps (period = nphi-1 when last column duplicates first), theta clamps
+  function blur(src, nth, nph, sigmaT, sigmaP) {
+    const kern = s => {
+      if (s <= 0) return [1];
+      const r = Math.ceil(3 * s), k = [];
+      let sum = 0;
+      for (let i = -r; i <= r; i++) { const v = Math.exp(-i * i / (2 * s * s)); k.push(v); sum += v; }
+      return k.map(v => v / sum);
+    };
+    const kp = kern(sigmaP), kt = kern(sigmaT), rp = (kp.length - 1) / 2, rt = (kt.length - 1) / 2;
+    const per = nph - 1, tmp = new Float64Array(src.length), out = new Float64Array(src.length);
+    for (let i = 0; i < nth; i++) for (let j = 0; j < per; j++) {
+      let s = 0;
+      for (let k = -rp; k <= rp; k++) s += kp[k + rp] * src[i * nph + (((j + k) % per) + per) % per];
+      tmp[i * nph + j] = s;
+    }
+    for (let i = 0; i < nth; i++) tmp[i * nph + per] = tmp[i * nph];
+    for (let i = 0; i < nth; i++) for (let j = 0; j < nph; j++) {
+      let s = 0;
+      for (let k = -rt; k <= rt; k++) s += kt[k + rt] * tmp[Math.min(nth - 1, Math.max(0, i + k)) * nph + j];
+      out[i * nph + j] = s;
+    }
+    return out;
+  }
+
+  return { parseCSV, toSphere, buildRBF, grid, tis, blur };
+})();
+/* ===================== end core ===================== */
+
+/* ===================== UI / rendering ===================== */
+const $ = id => document.getElementById(id);
+const state = { files: [], current: -1, cache: new Map() };
+const RES = 0.5;                                   // display grid step (deg)
+const TH = Array.from({ length: 180 / RES + 1 }, (_, i) => i * RES);
+const PH = Array.from({ length: 360 / RES + 1 }, (_, i) => i * RES);
+const THc = Array.from({ length: 180 }, (_, i) => i + 0.5);   // 1° cell centres for stats
+const PHc = Array.from({ length: 360 }, (_, i) => i + 0.5);
+
+function jet(x) {
+  x = Math.min(1, Math.max(0, x));
+  const c = v => Math.round(255 * Math.min(1, Math.max(0, v)));
+  return [c(1.5 - Math.abs(4 * x - 3)), c(1.5 - Math.abs(4 * x - 2)), c(1.5 - Math.abs(4 * x - 1))];
+}
+
+function freqFromName(name) {
+  const m = name.match(/ch(\d+)/i);
+  if (!m) return 'Frequency unknown';
+  const ch = +m[1];
+  if (ch >= 1 && ch <= 14) return (ch === 14 ? 2484 : 2407 + 5 * ch) + ' MHz';
+  return (5000 + 5 * ch) + ' MHz';
+}
+
+function readFile(file) {
+  return new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload = () => res(r.result);
+    r.onerror = () => rej(r.error);
+    r.readAsText(file, 'ISO-8859-1');            // chamber export uses Latin-1 (° sign)
+  });
+}
+
+async function addFiles(list) {
+  $('err').hidden = true;
+  const bad = [];
+  for (const f of list) {
+    try {
+      const parsed = TIS_CORE.parseCSV(await readFile(f));
+      if (!parsed.blocks.Total) { bad.push(f.name); continue; }
+      state.files.push({ name: f.name.replace(/\.csv$/i, ''), parsed });
+    } catch (e) { bad.push(f.name); }
+  }
+  if (bad.length) {
+    $('err').textContent = '找不到 Total 區塊,沒有載入:' + bad.join('、');
+    $('err').hidden = false;
+  }
+  renderList();
+  renderStats();
+  if (state.current < 0 && state.files.length) select(0);
+}
+
+function renderList() {
+  $('files').innerHTML = '';
+  state.files.forEach((f, i) => {
+    const li = document.createElement('li'), b = document.createElement('button');
+    b.textContent = f.name; b.setAttribute('aria-current', i === state.current);
+    b.onclick = () => select(i);
+    li.appendChild(b); $('files').appendChild(li);
+  });
+}
+
+function select(i) { state.current = i; renderList(); draw(); }
+
+function compute(fileIdx, pol) {
+  const key = fileIdx + '|' + pol;
+  if (state.cache.has(key)) return state.cache.get(key);
+  const f = state.files[fileIdx], block = f.parsed.blocks[pol];
+  if (!block) return null;
+  const pts = TIS_CORE.toSphere(block);
+  const rbf = TIS_CORE.buildRBF(pts);
+  const field = TIS_CORE.grid(rbf, TH, PH);
+  const statField = TIS_CORE.grid(rbf, THc, PHc);
+  const nP = PHc.length;
+  const q = (t0, t1, p0, p1) => TIS_CORE.tis(statField, THc, nP, (i, j) => THc[i] > t0 && THc[i] < t1 && PHc[j] > p0 && PHc[j] < p1);
+  let mn = pts[0], mx = pts[0];
+  for (const p of pts) { if (p.v < mn.v) mn = p; if (p.v > mx.v) mx = p; }
+  const res = {
+    pts, field, mn, mx,
+    tisAll: TIS_CORE.tis(statField, THc, nP),
+    quads: [
+      { t: [0, 90], p: [0, 180], v: q(0, 90, 0, 180) },
+      { t: [0, 90], p: [180, 360], v: q(0, 90, 180, 360) },
+      { t: [90, 180], p: [0, 180], v: q(90, 180, 0, 180) },
+      { t: [90, 180], p: [180, 360], v: q(90, 180, 180, 360) },
+    ],
+  };
+  state.cache.set(key, res);
+  return res;
+}
+
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
+}
+
+function draw() {
+  if (state.current < 0) return;
+  const pol = $('pol').value;
+  const f = state.files[state.current];
+  const R = compute(state.current, pol);
+  if (!R) { $('err').textContent = '這個檔案沒有 ' + pol + ' 區塊。'; $('err').hidden = false; return; }
+  $('err').hidden = true;
+
+  const autoMin = Math.floor(R.mn.v), autoMax = Math.ceil(R.mx.v) + ((Math.ceil(R.mx.v) - Math.floor(R.mn.v)) % 2);
+  const vmin = $('vmin').value.trim() === '' ? autoMin : +$('vmin').value;
+  const vmax = $('vmax').value.trim() === '' ? autoMax : +$('vmax').value;
+  if (!(vmax > vmin)) {
+    $('status').textContent = '⚠ vmax 必須大於 vmin'; $('status').className = 'status bad'; $('status').hidden = false; return;
+  }
+
+  const soft = +$('soft').value;
+  const nth = TH.length, nph = PH.length;
+  const shown = soft > 0 ? TIS_CORE.blur(R.field, nth, nph, soft / RES, soft / RES) : R.field;
+
+  // heat image
+  const off = document.createElement('canvas'); off.width = nph; off.height = nth;
+  const octx = off.getContext('2d'), img = octx.createImageData(nph, nth);
+  for (let k = 0; k < shown.length; k++) {
+    const [r, g, b] = jet((shown[k] - vmin) / (vmax - vmin));
+    img.data[4 * k] = r; img.data[4 * k + 1] = g; img.data[4 * k + 2] = b; img.data[4 * k + 3] = 255;
+  }
+  octx.putImageData(img, 0, 0);
+
+  const cv = $('cv'), ctx = cv.getContext('2d'), S = 2;      // 2x for crisp export
+  ctx.setTransform(S, 0, 0, S, 0, 0);
+  const W = 1220, H = 740, X0 = 92, Y0 = 84, PW = 976, PHt = 600;
+  ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, W, H);
+  ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(off, X0, Y0, PW, PHt);
+
+  const font = (sz, w = 400) => `${w} ${sz}px "DejaVu Sans", Arial, sans-serif`;
+  const xOf = p => X0 + p / 360 * PW, yOf = t => Y0 + t / 180 * PHt;
+
+  // cross lines + frame
+  ctx.strokeStyle = '#000'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(xOf(180), Y0); ctx.lineTo(xOf(180), Y0 + PHt); ctx.moveTo(X0, yOf(90)); ctx.lineTo(X0 + PW, yOf(90)); ctx.stroke();
+  ctx.strokeRect(X0, Y0, PW, PHt);
+
+  // ticks
+  ctx.fillStyle = '#000'; ctx.font = font(13);
+  ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+  for (let p = 0; p <= 360; p += 30) {
+    ctx.beginPath(); ctx.moveTo(xOf(p), Y0 + PHt); ctx.lineTo(xOf(p), Y0 + PHt + 5); ctx.stroke();
+    ctx.fillText(p, xOf(p), Y0 + PHt + 8);
+  }
+  ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+  for (let t = 0; t <= 180; t += 30) {
+    ctx.beginPath(); ctx.moveTo(X0 - 5, yOf(t)); ctx.lineTo(X0, yOf(t)); ctx.stroke();
+    ctx.fillText(t, X0 - 8, yOf(t));
+  }
+  ctx.font = font(14); ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+  ctx.fillText('Phi (degree)', X0 + PW / 2, Y0 + PHt + 28);
+  ctx.save(); ctx.translate(X0 - 52, Y0 + PHt / 2); ctx.rotate(-Math.PI / 2); ctx.textBaseline = 'middle';
+  ctx.fillText('Theta (degree)', 0, 0); ctx.restore();
+
+  // title
+  ctx.font = font(14); ctx.textBaseline = 'alphabetic';
+  ctx.fillText(`${f.name}: TIS | ${pol} | ${freqFromName(f.name)}`, X0 + PW / 2, 40);
+  ctx.fillText(`Min=${R.mn.v.toFixed(2)} dBm @ Phi=${R.mn.p}°, Theta=${R.mn.t}° | Max=${R.mx.v.toFixed(2)} dBm`, X0 + PW / 2, 60);
+
+  // colorbar
+  const CX = X0 + PW + 14, CW = 38;
+  const grad = ctx.createLinearGradient(0, Y0 + PHt, 0, Y0);
+  for (let s = 0; s <= 20; s++) { const [r, g, b] = jet(s / 20); grad.addColorStop(s / 20, `rgb(${r},${g},${b})`); }
+  ctx.fillStyle = grad; ctx.fillRect(CX, Y0, CW, PHt); ctx.strokeRect(CX, Y0, CW, PHt);
+  ctx.fillStyle = '#000'; ctx.font = font(13); ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+  const span = vmax - vmin, stepC = span <= 20 ? 2 : span <= 40 ? 5 : 10;
+  for (let v = Math.ceil(vmin / stepC) * stepC; v <= vmax + 1e-9; v += stepC) {
+    const y = Y0 + PHt - (v - vmin) / span * PHt;
+    ctx.beginPath(); ctx.moveTo(CX + CW, y); ctx.lineTo(CX + CW + 5, y); ctx.stroke();
+    ctx.fillText(v, CX + CW + 8, y);
+  }
+  ctx.save(); ctx.translate(CX + CW + 62, Y0 + PHt / 2); ctx.rotate(-Math.PI / 2); ctx.textAlign = 'center';
+  ctx.font = font(14); ctx.fillText('Sensitivity (dBm)', 0, 0); ctx.restore();
+
+  // quadrant labels
+  if ($('showQuad').checked) {
+    for (const q of R.quads) {
+      const cx = xOf((q.p[0] + q.p[1]) / 2), cy = yOf((q.t[0] + q.t[1]) / 2);
+      const [r, g, b] = jet((-q.v - vmin) / (vmax - vmin)).map(c => Math.round(255 - (255 - c) * 0.3));
+      const bw = 96, bh = 40;
+      roundRect(ctx, cx - bw / 2, cy - bh / 2, bw, bh, 4);
+      ctx.fillStyle = `rgb(${r},${g},${b})`; ctx.fill(); ctx.strokeStyle = '#555'; ctx.stroke();
+      ctx.fillStyle = '#000'; ctx.font = font(13, 700); ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText('Avg TIS', cx, cy - 9); ctx.fillText(q.v.toFixed(2) + ' dBm', cx, cy + 9);
+    }
+  }
+
+  cv.hidden = false; $('empty').hidden = true; $('dl').disabled = false;
+  $('status').className = 'status'; $('status').hidden = false;
+  $('status').textContent = `✅ Heatmap 已完成(${pol},色階 ${vmin} ~ ${vmax} dBm,柔和度 ${soft}°)`;
+
+}
+
+
+/* ---------- hemisphere statistics (raw measured grid, Total) ---------- */
+function rawGrid(pts) {
+  const phis = [...new Set(pts.filter(q => q.t !== 0 && q.t !== 180).map(q => q.p))].sort((a, b) => a - b);
+  const cells = [];
+  for (const q of pts) {
+    if (q.t === 0 || q.t === 180) phis.forEach(p => cells.push({ t: q.t, p, v: q.v }));   // pole repeated per phi
+    else cells.push(q);
+  }
+  return cells;
+}
+function hemiStat(cells, inA, inB, onEdge) {
+  const agg = list => list.length ? { avg: list.reduce((s, c) => s + c.v, 0) / list.length, max: Math.max(...list.map(c => c.v)) } : { avg: NaN, max: NaN };
+  const A = cells.filter(inA), B = cells.filter(inB);
+  return { A: agg(A), B: agg(B), Ax: agg(A.filter(c => !onEdge(c))), Bx: agg(B.filter(c => !onEdge(c))) };
+}
+const HEMIS = {
+  hUD: { a: '上', b: '下', inA: c => c.t <= 90, inB: c => c.t >= 90, edge: c => c.t === 90 },
+  hFB: { a: '前', b: '後', inA: c => c.p <= 180, inB: c => c.p >= 180 || c.p === 0, edge: c => c.p === 0 || c.p === 180 },
+  hLR: { a: '左', b: '右', inA: c => c.p >= 270 || c.p <= 90, inB: c => c.p >= 90 && c.p <= 270, edge: c => c.p === 90 || c.p === 270 },
+};
+function rowLabel(f) {
+  const m = f.name.match(/ch(\d+)/i);
+  const head = m ? `CH${m[1]}(${freqFromName(f.name)})` : f.name;
+  return `<td class="name">${head}${m ? `<small>${f.name}</small>` : ''}</td>`;
+}
+function renderStats() {
+  const ok = state.files.map((f, i) => ({ f, i })).filter(o => o.f.parsed.blocks.Total);
+  $('emptyStats').hidden = ok.length > 0; $('statsBody').hidden = ok.length === 0;
+  if (!ok.length) return;
+  const fx = v => isNaN(v) ? '–' : v.toFixed(2);
+  for (const [id, H] of Object.entries(HEMIS)) {
+    let html = `<thead><tr><th>天線 / 頻道</th><th>${H.a}半球 Avg</th><th>${H.b}半球 Avg</th>
+      <th>${H.a}半球 Max<br>(含邊界)</th><th>${H.b}半球 Max<br>(含邊界)</th>
+      <th>${H.a}半球 Max<br>(不含邊界)</th><th>${H.b}半球 Max<br>(不含邊界)</th></tr></thead><tbody>`;
+    for (const { f } of ok) {
+      const cells = rawGrid(TIS_CORE.toSphere(f.parsed.blocks.Total));
+      const r = hemiStat(cells, H.inA, H.inB, H.edge);
+      html += `<tr>${rowLabel(f)}<td>${fx(r.A.avg)}</td><td>${fx(r.B.avg)}</td><td>${fx(r.A.max)}</td><td>${fx(r.B.max)}</td><td>${fx(r.Ax.max)}</td><td>${fx(r.Bx.max)}</td></tr>`;
+    }
+    $(id).innerHTML = html + '</tbody>';
+  }
+  let html = `<thead><tr><th>天線 / 頻道</th><th>TIS<br>(檔案記錄)</th><th>TIS<br>(內插計算)</th>
+    <th>上半球<br>φ 0–180°</th><th>上半球<br>φ 180–360°</th><th>下半球<br>φ 0–180°</th><th>下半球<br>φ 180–360°</th></tr></thead><tbody>`;
+  for (const { f, i } of ok) {
+    const R = compute(i, 'Total'), t = f.parsed.meta.tis;
+    html += `<tr>${rowLabel(f)}<td>${t === undefined ? '–' : t.toFixed(2)}</td><td>${R.tisAll.toFixed(2)}</td>${R.quads.map(q => `<td>${q.v.toFixed(2)}</td>`).join('')}</tr>`;
+  }
+  $('hTIS').innerHTML = html + '</tbody>';
+}
+
+/* events */
+$('file').addEventListener('change', e => { addFiles([...e.target.files]); e.target.value = ''; });
+const drop = $('drop');
+['dragenter', 'dragover'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add('over'); }));
+['dragleave', 'drop'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove('over'); }));
+drop.addEventListener('drop', e => addFiles([...e.dataTransfer.files].filter(f => /\.csv$/i.test(f.name))));
+$('pol').addEventListener('change', draw);
+
+$('soft').addEventListener('input', () => { $('softOut').textContent = $('soft').value + '°'; draw(); });
+['vmin', 'vmax'].forEach(id => $(id).addEventListener('input', draw));
+$('showQuad').addEventListener('change', draw);
+$('dl').addEventListener('click', () => {
+  const f = state.files[state.current];
+  const pol = $('pol').value;
+  $('cv').toBlob(b => {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(b); a.download = `${f.name}_TIS_${pol}_heatmap.png`; a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  });
+});
+</script>
+</body>
+</html>
