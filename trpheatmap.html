@@ -79,7 +79,7 @@
 
   .heatmap-grid { display: flex; flex-direction: column; gap: 16px; }
   .heatmap-item { border-radius: 8px; background: #fff; padding: 8px 8px 10px; }
-  .heatmap-item .plot-div { width: 100%; height: 560px; }
+  .heatmap-item .plot-div { width: 100%; aspect-ratio: 630 / 320; height: auto; }   /* 固定約 2:1 長寬比 */
   .dl-btn {
     display: inline-block; margin: 6px 0 0 6px; padding: 7px 14px; border-radius: 8px;
     border: 1px solid #c9d1d9; background: #f6f8fa; color: #1f2328;
@@ -413,9 +413,8 @@ function renderHeatmapPanel(divId, label, pol, freqLabel, matrix, vmin, vmax, st
 
 function downloadHeatmapPng(divId, filename) {
   const el = document.getElementById(divId);
-  const w = Math.round(el.offsetWidth) || 600;
-  const h = Math.round(el.offsetHeight) || 380;
-  Plotly.toImage(el, { format: "png", width: w, height: h, scale: 3 }).then(url => {
+  // 固定輸出 630 × 320(約 2:1),scale 3 → 1890 × 960 px,不受螢幕寬度影響
+  Plotly.toImage(el, { format: "png", width: 630, height: 320, scale: 3 }).then(url => {
     const a = document.createElement("a");
     a.href = url; a.download = filename;
     document.body.appendChild(a); a.click(); document.body.removeChild(a);
