@@ -159,7 +159,7 @@
     <div class="main">
       <section class="card">
         <h2>Heatmap</h2>
-        <p class="desc">圖面以 bicubic 內插平滑顯示,再依「柔和度」做高斯暈染(0° = 不暈染);游標顯示的是最接近的 15° 原始量測值;半球統計與 Composite Max 皆以原始量測值計算。所有圖共用同一個色階;vmin / vmax / step 留空則依所選極化的各天線資料自動決定。同一頻道有 2 個以上天線時,接著畫 Composite(逐點取最大值)。</p>
+        <p class="desc">圖面以 bicubic 內插平滑顯示,再依「柔和度」做高斯暈染(0° = 不暈染);游標顯示的是最接近的 15° 原始量測值;半球統計與 Composite Max 皆以原始量測值計算。所有圖共用同一個色階;vmin / vmax 留空則依所選極化的各天線資料自動決定;step 留空 = color bar 每 2 dB 一個刻度。同一頻道有 2 個以上天線時,接著畫 Composite(逐點取最大值)。</p>
         <div id="heatmap-empty" class="msg info">從左邊上傳 TRP CSV,再按「產生 Heatmap」。</div>
         <div id="heatmap-results"></div>
         <div id="heatmap-msg-box"></div>
@@ -397,24 +397,31 @@ function renderHeatmapPanel(divId, label, pol, freqLabel, matrix, vmin, vmax, st
     zmin: vmin, zmax: vmax,
     zsmooth: "best",
     colorscale: "Jet",
-    colorbar: step ? { tickmode: "array", tickvals: rangeInclusive(vmin, vmax, step) } : {},
+    colorbar: Object.assign(
+      { thickness: 16, len: 1, lenmode: "fraction", y: 0.5, yanchor: "middle", x: 1.015, xanchor: "left", xpad: 6,
+        outlinewidth: 1, ticks: "outside", ticklen: 4, tickfont: { size: 11 } },
+      // step 留空 → 固定每 2 dB 一個刻度(偶數);有填 step 則照填的值
+      step ? { tickmode: "array", tickvals: rangeInclusive(vmin, vmax, step) } : { tickmode: "linear", tick0: 0, dtick: 2 }),
   };
   let titleText = freqLabel ? `${label} - ${pol} - ${freqLabel} MHz` : `${label} - ${pol}`;
   if (subtitle) titleText += `<br>${subtitle}`;
   const layout = {
-    title: { text: titleText, font: { size: 13 } },
-    xaxis: { title: "Phi Angle (deg)", dtick: 15 },
-    yaxis: { title: "Theta Angle (deg)", dtick: 15, autorange: "reversed" },
+    title: { text: titleText, font: { size: 13 }, x: 0.5, xanchor: "center" },
+    // X 軸刻度順時針轉 90°(直式),自動留邊,避免刻度 / 軸標題 / color bar 互相重疊
+    xaxis: { title: { text: "Phi Angle (deg)", standoff: 10 }, dtick: 15, tickangle: 90, tickfont: { size: 11 },
+             range: [0, 360], ticks: "outside", ticklen: 4, automargin: true },
+    yaxis: { title: { text: "Theta Angle (deg)", standoff: 6 }, dtick: 15, tickfont: { size: 10 },
+             range: [180, 0], ticks: "outside", ticklen: 4, automargin: true },
     paper_bgcolor: "#ffffff", plot_bgcolor: "#ffffff", font: { color: "#1a1a1a" },
-    margin: { l: 60, r: 20, t: subtitle ? 60 : 40, b: 45 },
+    margin: { l: 60, r: 70, t: subtitle ? 56 : 36, b: 70 },
   };
   Plotly.newPlot(divId, [trace], layout, { responsive: true, displaylogo: false });
 }
 
 function downloadHeatmapPng(divId, filename) {
   const el = document.getElementById(divId);
-  // 固定輸出 630 × 320(約 2:1),scale 3 → 1890 × 960 px,不受螢幕寬度影響
-  Plotly.toImage(el, { format: "png", width: 630, height: 320, scale: 3 }).then(url => {
+  // 固定以 1260 × 640 版面輸出(約 2:1),scale 2 → 2520 × 1280 px;X 軸刻度固定直式
+  Plotly.toImage(el, { format: "png", width: 1260, height: 640, scale: 2 }).then(url => {
     const a = document.createElement("a");
     a.href = url; a.download = filename;
     document.body.appendChild(a); a.click(); document.body.removeChild(a);
