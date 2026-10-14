@@ -1,0 +1,645 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>All-in-One 天線分析</title>
+<style>
+  :root {
+    --bg: #0d1117; --card: #161b22; --line: #30363d; --input: #0d1117;
+    --text: #e6edf3; --muted: #8b949e; --primary: #4f8cff; --primary-hover: #6b9dff;
+    --ok-bg: #12261c; --ok: #3fb950; --err-bg: #2d1416; --err: #f85149; --warn: #e3b341;
+    color-scheme: dark;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font-family: "Segoe UI", "Microsoft JhengHei", "PingFang TC", "Noto Sans TC", system-ui, sans-serif;
+    font-size: 14px; line-height: 1.5;
+  }
+  .wrap { max-width: 1600px; margin: 0 auto; padding: 18px 24px 48px; }
+  .back { color: var(--muted); text-decoration: none; font-size: 14px; }
+  .back:hover { color: var(--text); }
+  h1 { display: flex; align-items: center; gap: 12px; margin: 22px 0 4px; font-size: 30px; font-weight: 800; }
+  .sub { margin: 0 0 22px; color: var(--muted); font-size: 14px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 20px; margin-bottom: 16px; }
+  .card h2 { margin: 0 0 10px; font-size: 17px; font-weight: 700; }
+  .desc { margin: 0 0 14px; color: var(--muted); font-size: 12.5px; line-height: 1.6; }
+
+  .drop {
+    display: block; border: 1.5px dashed #3d4654; border-radius: 10px; background: var(--input);
+    padding: 34px 12px; text-align: center; color: var(--muted); cursor: pointer;
+  }
+  .drop.over, .drop:hover { border-color: var(--primary); color: var(--text); }
+  .drop strong { color: var(--primary); }
+  .drop input { display: none; }
+
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 12px; }
+  .chip { border: 1px solid var(--line); border-radius: 999px; padding: 3px 12px; font-size: 13px; color: var(--muted); }
+  .chip b { color: var(--text); margin-left: 4px; }
+  .chip.bad { border-color: #5a4a1a; color: var(--warn); }
+
+  .tbl-wrap { overflow-x: auto; }
+  table.files { width: 100%; border-collapse: collapse; font-size: 13px; }
+  table.files th { text-align: left; color: var(--muted); font-weight: 600; padding: 6px 10px; border-bottom: 1px solid var(--line); }
+  table.files td { padding: 7px 10px; border-bottom: 1px solid #21262d; vertical-align: middle; }
+  table.files td.fname { word-break: break-all; max-width: 420px; }
+  table.files td.reason { color: var(--muted); font-size: 12.5px; }
+  table.files tr.none td.fname { color: var(--muted); }
+  table.files tr.ambiguous td { background: rgba(227, 179, 65, 0.07); }
+  table.files tr.ambiguous td.reason { color: var(--warn); }
+  table.files select {
+    height: 32px; padding: 0 8px; background: var(--input); color: var(--text);
+    border: 1px solid var(--line); border-radius: 6px; font: inherit; font-size: 13px; min-width: 230px;
+  }
+  .rm { border: 0; background: none; color: var(--muted); cursor: pointer; font-size: 16px; padding: 2px 6px; }
+  .rm:hover { color: var(--err); }
+
+  button.primary {
+    width: 100%; border: 0; border-radius: 8px; background: var(--primary); color: #fff; padding: 12px 14px;
+    font: inherit; font-size: 15px; font-weight: 700; cursor: pointer;
+  }
+  button.primary:hover { background: var(--primary-hover); }
+  button.primary:disabled { opacity: .45; cursor: not-allowed; }
+  button.ghost {
+    border: 1px solid var(--line); border-radius: 8px; background: none; color: var(--muted);
+    padding: 6px 12px; font: inherit; font-size: 13px; cursor: pointer;
+  }
+  button.ghost:hover { color: var(--text); border-color: var(--muted); }
+  button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+
+  .msg { padding: 10px 14px; border-radius: 8px; font-size: 13px; margin-top: 12px; }
+  .msg.success { background: var(--ok-bg); color: var(--ok); }
+  .msg.error { background: var(--err-bg); color: var(--err); }
+
+  /* result tabs */
+  .tabs { display: flex; flex-wrap: wrap; gap: 6px; margin: 26px 0 0; border-bottom: 1px solid var(--line); }
+  .tab {
+    border: 1px solid transparent; border-bottom: 0; border-radius: 8px 8px 0 0; background: none;
+    color: var(--muted); padding: 9px 16px; font: inherit; font-size: 14px; font-weight: 600; cursor: pointer;
+    display: inline-flex; align-items: center; gap: 8px; margin-bottom: -1px;
+  }
+  .tab:hover { color: var(--text); }
+  .tab[aria-selected="true"] { color: var(--text); background: var(--card); border-color: var(--line); }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+  .dot.run { background: var(--primary); animation: pulse 1s infinite alternate; }
+  .dot.ok { background: var(--ok); }
+  .dot.err { background: var(--err); }
+  @keyframes pulse { from { opacity: .35; } to { opacity: 1; } }
+  @media (prefers-reduced-motion: reduce) { .dot.run { animation: none; } }
+
+  /* Inactive panels stay laid out off-screen so the charts inside get real widths */
+  .panels { position: relative; }
+  .panel { position: absolute; left: -100000px; top: 0; width: 100%; visibility: hidden; }
+  .panel.active { position: static; visibility: visible; }
+  .panel-status {
+    background: var(--card); border: 1px solid var(--line); border-top: 0; padding: 10px 16px;
+    font-size: 13px; color: var(--muted); display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+  }
+  .panel-status .err { color: var(--err); }
+  .panel-status a { color: var(--primary); text-decoration: none; }
+  .panel iframe { display: block; width: 100%; height: 900px; border: 1px solid var(--line); border-top: 0; border-radius: 0 0 12px 12px; background: var(--bg); }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <a class="back" href="./index.html">← 回入口頁</a>
+  <h1><span aria-hidden="true">📡</span>All-in-One 天線分析</h1>
+  <p class="sub">一次放入所有量測檔，依檔案內容自動分類，再交給各個分析工具一起執行。</p>
+
+  <section class="card">
+    <h2>① 放入所有檔案</h2>
+    <p class="desc">RL、Isolation、TOTAL、3CUT、TRP、TIS 可以混在一起放。分類只看檔案內容，不看檔名或副檔名；檔案只在瀏覽器內處理。</p>
+    <label class="drop" id="drop">
+      <input type="file" id="file-input" multiple />
+      <strong>選擇檔案</strong> 或拖曳到這裡（可分批加入）
+    </label>
+  </section>
+
+  <section class="card" id="list-card" hidden>
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;">
+      <h2 style="margin:0;">② 確認分類</h2>
+      <button class="ghost" id="clear-btn">清除全部</button>
+    </div>
+    <p class="desc" style="margin-top:8px;">判斷錯誤時可以直接改下拉選單。標成「無法辨認」的檔案不會被分析。</p>
+    <div class="chips" id="chips"></div>
+    <div class="tbl-wrap">
+      <table class="files">
+        <thead><tr><th>檔名</th><th>分類</th><th>判斷依據</th><th></th></tr></thead>
+        <tbody id="file-rows"></tbody>
+      </table>
+    </div>
+    <div style="margin-top:16px;"><button class="primary" id="run-btn">③ 開始分析</button></div>
+    <div id="run-msg"></div>
+  </section>
+
+  <div id="results" hidden>
+    <div class="tabs" role="tablist" id="tabs"></div>
+    <div class="panels" id="panels"></div>
+  </div>
+</div>
+
+<script>
+// =====================================================================
+// 1. Content-based classifier (filename / extension are never used)
+// =====================================================================
+const TYPE_LABELS = {
+  RL: "Return Loss / VSWR",
+  ISO: "Isolation",
+  TOTAL: "TOTAL（Efficiency / Gain / Heatmap）",
+  CUT3: "3CUT（2D Pattern）",
+  TRP: "TRP",
+  TIS: "TIS",
+  NONE: "無法辨認（不分析）",
+};
+const TYPE_ORDER = ["RL", "ISO", "TOTAL", "CUT3", "TRP", "TIS", "NONE"];
+const POLS = ["Theta", "Phi", "Total"];
+
+function decodeBuffer(buf) {
+  const u8 = new Uint8Array(buf);
+  if (u8[0] === 0xFF && u8[1] === 0xFE) return new TextDecoder("utf-16le").decode(u8);
+  if (u8[0] === 0xFE && u8[1] === 0xFF) return new TextDecoder("utf-16be").decode(u8);
+  try { return new TextDecoder("utf-8", { fatal: true }).decode(u8); }
+  catch (e) { return new TextDecoder("iso-8859-1").decode(u8); }
+}
+function splitRows(text) {
+  return text.replace(/^\uFEFF/, "").split(/\r\n|\n|\r/).map(l => l.split(",").map(c => c.trim()));
+}
+const isNum = s => s !== "" && s !== undefined && Number.isFinite(Number(s));
+
+function sparamStats(rows, hdrIdx) {
+  const hdr = rows[hdrIdx];
+  const find = re => hdr.findIndex(h => re.test(h));
+  const iS11 = find(/^S11\b/i), iS22 = find(/^S22\b/i);
+  let iT = find(/^S12\b/i); if (iT < 0) iT = find(/^S21\b/i);
+  const data = [];
+  for (let r = hdrIdx + 1; r < rows.length; r++) {
+    const c = rows[r];
+    if (!isNum(c[0])) { if (data.length) break; else continue; }
+    data.push(c.map(Number));
+  }
+  const med = data.map(d => d[0]).sort((a, b) => a - b)[Math.floor(data.length / 2)] || 0;
+  const toMHz = med > 1e6 ? 1e-6 : med > 1e3 ? 1 : 1000;
+  const sel = data.filter(d => d[0] * toMHz >= 300);           // skip < 300 MHz (fixture effects)
+  const col = i => (i < 0 ? null : sel.map(d => d[i]).filter(Number.isFinite));
+  const s22 = col(iS22), t = col(iT);
+  return {
+    nRows: data.length,
+    transName: iT >= 0 ? hdr[iT] : null,
+    hasS11: iS11 >= 0,
+    s22Min: s22 && s22.length ? Math.min(...s22) : null,
+    tMax: t && t.length ? Math.max(...t) : null,
+  };
+}
+
+function classifyText(text) {
+  const rows = splitRows(text);
+  const lines = text.replace(/^\uFEFF/, "").split(/\r\n|\n|\r/);
+  const out = (type, reason, extra) => Object.assign({ type, reason }, extra || {});
+
+  // --- Network-analyzer S-parameter CSV -------------------------------------
+  const hdrIdx = rows.findIndex(c => /^freq/i.test(c[0] || "") && c.slice(1).some(h => /^S\d\d\b/i.test(h)));
+  if (hdrIdx >= 0) {
+    const st = sparamStats(rows, hdrIdx);
+    if (st.nRows < 10) return out("NONE", "有 S 參數欄位標頭，但數值資料列不足");
+    if (!st.hasS11) return out("NONE", "S 參數 CSV 但沒有 S11 欄位");
+    const extra = { sparam: st };
+    if (st.tMax === null) return out("RL", "S 參數 CSV，只有反射係數（1-port）", extra);
+    const f1 = v => v.toFixed(1);
+    const s22Txt = st.s22Min === null ? "無 S22" : `S22 最低 ${f1(st.s22Min)} dB`;
+    const desc = `${st.transName.split(" ")[0]} 最高 ${f1(st.tMax)} dB、${s22Txt}`;
+    const port2Live = st.s22Min !== null && st.s22Min < -6;   // port 2 sees a resonating antenna
+    const port2Open = st.s22Min === null || st.s22Min > -3;   // port 2 open / unused
+    const coupled = st.tMax > -50;                            // real coupling, not the noise floor
+    if (coupled && (port2Live || st.s22Min === null)) return out("ISO", `兩埠都接天線（${desc}）`, extra);
+    if (!coupled && port2Open) return out("RL", `只有 Port 1 接天線（${desc}）`, extra);
+    return out("NONE", `S 參數 CSV，但分不出 RL 或 Isolation（${desc}），請手動指定`, Object.assign(extra, { ambiguous: true }));
+  }
+
+  // --- Touchstone ------------------------------------------------------------
+  if (lines.some(l => /^\s*#\s*(hz|khz|mhz|ghz)\s+[syz]\s+(ma|db|ri)\s+r\s+\d/i.test(l)))
+    return out("NONE", "Touchstone 格式；現有 RL / Isolation 工具只吃網分儀匯出的 CSV");
+
+  // --- Chamber exports ---------------------------------------------------------
+  const method = (lines.find(l => /Test Method:/i.test(l)) || "").replace(/.*Test Method:\s*/i, "").replace(/"/g, "").trim();
+  const has = pred => rows.some(pred);
+
+  const cutHdr = rows.filter(c => /^cut[123]$/i.test(c[0] || "") && /polarization/i.test(c[1] || ""));
+  if (cutHdr.length) {
+    const angleRows = has(c => /^angle/i.test(c[2] || "") && /power/i.test(c[3] || ""));
+    const freqHdr = has(c => c[0] === "" && POLS.includes(c[1]) && /frequency/i.test(c[2] || "") && isNum(c[3]));
+    if (angleRows && freqHdr) return out("CUT3", `${cutHdr.length} 個切面（Cut1–3），每個切面有角度 × 頻率資料`);
+    return out("NONE", "有 Cut 區塊，但缺少角度 / 頻率資料表");
+  }
+
+  if (/sensitivity/i.test(method)) {
+    const block = has(c => POLS.includes(c[0]) && /^phi angle/i.test(c[1] || "") && isNum(c[2]));
+    const thetaRow = has(c => c[0] === "" && /^theta angle/i.test(c[1] || ""));
+    const tisRow = has(c => c[1] === "TIS (dBm)" && isNum(c[2]));
+    if (block && thetaRow && tisRow) return out("TIS", "Sensitivity 量測，含 θ/φ 球面網格與 TIS (dBm)");
+    return out("NONE", "Sensitivity 量測，但缺少球面網格或 TIS 數值");
+  }
+
+  const totalBlock = has(c => POLS.includes(c[0]) && /^phi angle/i.test(c[1] || ""));
+  const respHdr = has(c => /^frequency/i.test(c[2] || "") && /^response/i.test(c[3] || ""));
+  const sumFreq = has(c => c[0] === "Total" && /^frequency/i.test(c[1] || "") && isNum(c[2]));
+  const effRow = has(c => /^efficiency \(%\)/i.test(c[1] || ""));
+  if (totalBlock && respHdr) {
+    if (sumFreq && effRow) return out("TOTAL", "多頻點全球面量測，含 Efficiency / Gain 摘要");
+    return out("NONE", "全球面量測，但缺少 Efficiency / Gain 摘要");
+  }
+
+  const trpBlock = has(c => POLS.includes(c[0]) && /^theta angle/i.test(c[1] || "") && isNum(c[2]));
+  const phiRow = has(c => c[0] === "" && /^phi angle/i.test(c[1] || "") && /power/i.test(c[2] || ""));
+  const trpRow = has(c => /^tot\. rad\. pwr\./i.test(c[1] || "") && isNum(c[2]));
+  if (trpBlock && phiRow && trpRow) return out("TRP", "單頻點全球面功率量測，含 Tot. Rad. Pwr.");
+  if (trpBlock || trpRow) return out("NONE", "像 TRP 檔，但缺少球面網格或 TRP 數值");
+
+  return out("NONE", "不符合任何已知格式");
+}
+
+// Frequencies (MHz) inside radiation files, used to pre-select bands
+function radiationFreqs(text, type) {
+  const rows = splitRows(text);
+  let r = null;
+  if (type === "TOTAL") r = rows.find(c => c[0] === "Total" && /^frequency/i.test(c[1] || ""));
+  if (type === "CUT3") { r = rows.find(c => c[0] === "" && POLS.includes(c[1]) && /frequency/i.test(c[2] || "")); if (r) r = r.slice(1); }
+  return r ? r.slice(2).filter(isNum).map(Number) : [];
+}
+
+// =====================================================================
+// 2. File list UI
+// =====================================================================
+let items = [];      // { id, file, text, result, chosen }
+let nextId = 1;
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"]/g, ch => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[ch]));
+
+async function addFiles(fileList) {
+  for (const file of fileList) {
+    let text = "", result;
+    try {
+      text = decodeBuffer(await file.arrayBuffer());
+      result = classifyText(text);
+    } catch (e) {
+      result = { type: "NONE", reason: "讀取失敗：" + e.message };
+    }
+    items.push({ id: nextId++, file, text, result, chosen: result.type });
+  }
+  renderList();
+}
+
+function renderList() {
+  $("list-card").hidden = items.length === 0;
+  const counts = {};
+  items.forEach(it => { counts[it.chosen] = (counts[it.chosen] || 0) + 1; });
+  $("chips").innerHTML = TYPE_ORDER.filter(t => counts[t]).map(t =>
+    `<span class="chip${t === "NONE" ? " bad" : ""}">${esc(TYPE_LABELS[t])}<b>${counts[t]}</b></span>`).join("");
+
+  $("file-rows").innerHTML = items.map(it => {
+    const opts = TYPE_ORDER.map(t => `<option value="${t}"${t === it.chosen ? " selected" : ""}>${esc(TYPE_LABELS[t])}</option>`).join("");
+    const changed = it.chosen !== it.result.type;
+    const cls = [it.chosen === "NONE" ? "none" : "", it.result.ambiguous && it.chosen === "NONE" ? "ambiguous" : ""].join(" ");
+    const reason = changed ? `已手動改為 ${TYPE_LABELS[it.chosen]}（原判斷：${it.result.reason}）` : it.result.reason;
+    return `<tr class="${cls}">
+      <td class="fname">${esc(it.file.name)}</td>
+      <td><select data-id="${it.id}" aria-label="分類">${opts}</select></td>
+      <td class="reason">${esc(reason)}</td>
+      <td><button class="rm" data-rm="${it.id}" title="移除" aria-label="移除 ${esc(it.file.name)}">×</button></td>
+    </tr>`;
+  }).join("");
+
+  $("file-rows").querySelectorAll("select").forEach(sel => sel.addEventListener("change", () => {
+    items.find(it => it.id === +sel.dataset.id).chosen = sel.value;
+    renderList();
+  }));
+  $("file-rows").querySelectorAll("[data-rm]").forEach(btn => btn.addEventListener("click", () => {
+    items = items.filter(it => it.id !== +btn.dataset.rm);
+    renderList();
+  }));
+  $("run-btn").disabled = !items.some(it => it.chosen !== "NONE");
+}
+
+const fileInput = $("file-input"), drop = $("drop");
+fileInput.addEventListener("change", () => { addFiles(Array.from(fileInput.files)); fileInput.value = ""; });
+["dragenter", "dragover"].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add("over"); }));
+["dragleave", "drop"].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove("over"); }));
+drop.addEventListener("drop", e => addFiles(Array.from(e.dataTransfer.files)));
+$("clear-btn").addEventListener("click", () => {
+  items = []; renderList();
+  $("results").hidden = true; $("tabs").innerHTML = ""; $("panels").innerHTML = ""; $("run-msg").innerHTML = "";
+});
+
+// =====================================================================
+// 3. Driving the existing tool pages inside same-origin iframes
+// =====================================================================
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+async function waitFor(fn, what, ms = 60000) {
+  const t0 = Date.now();
+  while (Date.now() - t0 < ms) {
+    const v = fn();
+    if (v) return v;
+    await sleep(120);
+  }
+  throw new Error(`等待「${what}」逾時`);
+}
+function frameCtx(iframe) {
+  let doc = null;
+  try { doc = iframe.contentDocument; } catch (e) { doc = null; }
+  if (!doc || !doc.body) {
+    const err = new Error("SAME_ORIGIN");
+    err.sameOrigin = true;
+    throw err;
+  }
+  const win = iframe.contentWindow;
+  return { win, doc, $: id => doc.getElementById(id) };
+}
+function setFiles(c, input, files) {
+  const dt = new c.win.DataTransfer();
+  files.forEach(f => dt.items.add(f));
+  input.files = dt.files;
+  input.dispatchEvent(new c.win.Event("change", { bubbles: true }));
+}
+function setValue(el, v) {
+  el.value = v;
+  el.dispatchEvent(new el.ownerDocument.defaultView.Event("input", { bubbles: true }));
+  el.dispatchEvent(new el.ownerDocument.defaultView.Event("change", { bubbles: true }));
+}
+function check(el, on) { if (el && el.checked !== on) el.click(); }
+function boxResult(box) {
+  if (!box) return null;
+  const e = box.querySelector(".msg.error");
+  if (e) throw new Error(e.textContent.replace(/^\s*❌\s*/, "").trim());
+  return box.querySelector(".msg");
+}
+// Some browsers fire a late "load" for the iframe's initial about:blank page.
+// Only accept the load once the iframe really shows the tool page and its DOM is complete.
+function loadToolPage(iframe, page) {
+  return new Promise((res, rej) => {
+    const timer = setTimeout(() => rej(new Error(`${page} 載入逾時`)), 60000);
+    const done = () => { clearTimeout(timer); clearInterval(poll); iframe.removeEventListener("load", check); res(); };
+    function check() {
+      let href = "", ready = "";
+      try {
+        href = iframe.contentWindow.location.href;
+        ready = iframe.contentDocument && iframe.contentDocument.readyState;
+      } catch (e) { return done(); }            // cross-origin: let frameCtx report it
+      if (href.split(/[?#]/)[0].endsWith("/" + page) && ready === "complete") done();
+    }
+    iframe.addEventListener("load", check);
+    const poll = setInterval(check, 200);
+    iframe.src = page;
+  });
+}
+async function needPlotly(c) {
+  try { await waitFor(() => c.win.Plotly, "Plotly", 15000); }
+  catch (e) { throw new Error("Plotly 繪圖元件沒有載入（請確認網路可以連到 CDN 後重新整理）"); }
+}
+const ghz = mhz => String(parseFloat((mhz / 1000).toFixed(6)));
+
+// Band tables copied from the individual tools
+const RL_BANDS = { 1: [2400, 2500], 2: [5150, 5850], 3: [5925, 7125], 5: [617, 960], 6: [1710, 2700], 7: [3300, 4200] };
+const EFF_BANDS = [[2400, 2500], [5150, 5850], [5925, 7125], [617, 960], [1710, 2690], [3300, 5000]];
+
+function matchBands(freqs, bandList) {
+  return bandList.filter(([, [s, e]]) => freqs.some(f => f >= s && f <= e)).map(([k]) => k);
+}
+
+// ---- RL / ISO (rl-vswr-isolation.html) ----
+async function runSparam(c, files, ctx, mode) {
+  await needPlotly(c);
+  const radio = c.doc.querySelector(`input[name="mode"][value="${mode}"]`);
+  radio.click();
+  const notes = [];
+  if (ctx.radFreqs.length) {
+    const codes = matchBands(ctx.radFreqs, Object.entries(RL_BANDS)).map(Number);
+    if (codes.length) {
+      const s = Math.min(...codes.map(k => RL_BANDS[k][0])), e = Math.max(...codes.map(k => RL_BANDS[k][1]));
+      setValue(c.$("fstart"), ghz(s)); setValue(c.$("fend"), ghz(e));
+      notes.push(`頻率範圍依 TOTAL / 3CUT 頻點設為 ${ghz(s)}–${ghz(e)} GHz`);
+    }
+  }
+  if (mode === "iso") {
+    const trans = (ctx.items.find(it => it.result.sparam && it.result.sparam.transName) || {}).result;
+    const name = trans && trans.sparam.transName;
+    if (name) {
+      const sel = c.$("iso-col-select");
+      if (Array.from(sel.options).some(o => o.value === name)) setValue(sel, name);
+      else { setValue(sel, "__custom__"); setValue(c.$("iso-col-custom"), name.replace(/\(.*$/, "").trim()); }
+      notes.push(`Isolation 欄位：${name}`);
+    }
+  }
+  setFiles(c, c.$("file-input"), files);
+  c.$("run-btn").click();
+  await waitFor(() => c.$("msg-box").querySelector(".msg"), "分析完成");
+  boxResult(c.$("msg-box"));
+  return notes;
+}
+
+// ---- Efficiency & Peak Gain (efficiency-gain.html) ----
+async function runEff(c, files, ctx) {
+  await needPlotly(c);
+  c.doc.querySelector('input[name="source"][value="original"]').click();
+  const idx = matchBands(ctx.radFreqs, EFF_BANDS.map((b, i) => [i, b]));
+  const notes = [];
+  if (idx.length) {
+    idx.forEach(i => check(c.doc.querySelector(`#band-checks input[value="${i}"]`), true));
+    notes.push("頻段依檔案頻點自動勾選");
+  } else if (ctx.radFreqs.length) {
+    setValue(c.$("manual-start-0"), ghz(Math.min(...ctx.radFreqs) - 10));
+    setValue(c.$("manual-end-0"), ghz(Math.max(...ctx.radFreqs) + 10));
+    notes.push("檔案頻點不在預設頻段內，已填入手動頻段");
+  }
+  setFiles(c, c.$("file-input"), files);
+  c.$("run-btn").click();
+  await waitFor(() => c.$("msg-box").querySelector(".msg"), "產生圖表");
+  boxResult(c.$("msg-box"));
+  return notes;
+}
+
+// ---- 2D Pattern (pattern-2d.html) ----
+async function runPattern(c, files) {
+  await needPlotly(c);
+  setFiles(c, c.$("file-input"), files);
+  c.$("load-btn").click();
+  await waitFor(() => !c.$("config-section").hidden || c.$("load-msg-box").querySelector(".msg.error"), "載入檔案");
+  if (c.$("config-section").hidden) boxResult(c.$("load-msg-box"));
+  c.$("draw-btn").click();
+  await waitFor(() => c.$("msg-box").querySelector(".msg"), "繪製 2D Pattern");
+  boxResult(c.$("msg-box"));
+  return [`頻率先畫 ${c.$("freq-select").value} MHz，可在下方切換`];
+}
+
+// ---- Heatmap / Homogenous / MIMO (heatmap.html) ----
+async function runHeatmap(c, files) {
+  await needPlotly(c);
+  if (!c.win.ExcelJS) throw new Error("ExcelJS 元件沒有載入（請確認網路可以連到 CDN 後重新整理）");
+  const notes = [];
+  setFiles(c, c.$("csv-input"), files);
+  c.$("build-db-btn").click();
+  await waitFor(() => !c.$("tab2-filters").hidden || c.$("db-msg-box").querySelector(".msg.error"), "產生 Database");
+  boxResult(c.$("db-msg-box"));
+
+  ["filter-ants", "filter-pols", "filter-freqs"].forEach(id =>
+    c.$(id).querySelectorAll("input[type=checkbox]").forEach(cb => check(cb, true)));
+  c.$("build-analysis-btn").click();
+  await waitFor(() => c.$("analysis-msg-box").querySelector(".msg"), "產生 Analysis / Comcast Excel");
+  boxResult(c.$("analysis-msg-box"));
+
+  // ④ first, while its tab is visible, so Plotly gets real sizes
+  const tabBtn = t => c.doc.querySelector(`.tab-btn[data-tab="${t}"]`);
+  if (!c.$("tab4-controls").hidden) {
+    tabBtn("tab4").click();
+    for (const [btn, box, label] of [["gen-homo-btn", "homo-results", "Homogenous"], ["gen-mimo-btn", "mimo-results", "MIMO"]]) {
+      c.$(btn).click();
+      await waitFor(() => c.$(box).children.length, label);
+      if (c.$(box).querySelector(".msg.error")) notes.push(`${label}：${c.$(box).textContent.replace("❌", "").trim()}`);
+    }
+  } else {
+    notes.push("沒有 Total 極化資料，略過 Homogenous / MIMO");
+  }
+
+  // ③ heatmap
+  tabBtn("tab3").click();
+  c.$("hm-ants").querySelectorAll("input[type=checkbox]").forEach(cb => check(cb, true));
+  const pol = c.$("hm-pol");
+  if (Array.from(pol.options).some(o => o.value === "Total")) setValue(pol, "Total");
+  c.$("gen-heatmap-btn").click();
+  await waitFor(() => c.$("heatmap-msg-box").querySelector(".msg"), "產生 Heatmap");
+  boxResult(c.$("heatmap-msg-box"));
+  notes.unshift(`Heatmap 先畫 ${c.$("hm-freq").value} MHz（Total），③ / ④ 分頁可切換頻率重畫`);
+  return notes;
+}
+
+// ---- TRP Heatmap (trpheatmap.html) ----
+async function runTrp(c, files) {
+  setFiles(c, c.$("csv-input"), files);
+  await waitFor(() => c.$("file-table-box").innerHTML.trim() || c.$("load-msg-box").querySelector(".msg.error"), "讀取 TRP CSV");
+  boxResult(c.$("load-msg-box"));
+  c.$("gen-heatmap-btn").click();
+  await waitFor(() => c.$("heatmap-msg-box").querySelector(".msg"), "產生 Heatmap");
+  boxResult(c.$("heatmap-msg-box"));
+  return [];
+}
+
+// ---- TIS Heatmap (tisheatmap.html) ----
+async function runTis(c, files) {
+  setFiles(c, c.$("file"), files);
+  await waitFor(() => !c.$("cv").hidden || !c.$("err").hidden, "讀取 TIS CSV");
+  if (!c.$("err").hidden && c.$("cv").hidden) throw new Error(c.$("err").textContent);
+  return files.length > 1 ? ["多個檔案時，Heatmap 一次顯示一個，可在左側清單切換"] : [];
+}
+
+const TOOLS = [
+  { key: "rl",      type: "RL",    title: "Return Loss / VSWR",   page: "rl-vswr-isolation.html", run: (c, f, x) => runSparam(c, f, x, "rl_vswr"), probe: "run-btn" },
+  { key: "iso",     type: "ISO",   title: "Isolation",            page: "rl-vswr-isolation.html", run: (c, f, x) => runSparam(c, f, x, "iso"), probe: "run-btn" },
+  { key: "eff",     type: "TOTAL", title: "Efficiency & Gain",    page: "efficiency-gain.html",   run: runEff, probe: "run-btn" },
+  { key: "heatmap", type: "TOTAL", title: "Heatmap / MIMO",       page: "heatmap.html",           run: runHeatmap, probe: "build-db-btn" },
+  { key: "pattern", type: "CUT3",  title: "2D Pattern",           page: "pattern-2d.html",        run: runPattern, probe: "load-btn" },
+  { key: "trp",     type: "TRP",   title: "TRP Heatmap",          page: "trpheatmap.html",        run: runTrp, probe: "gen-heatmap-btn" },
+  { key: "tis",     type: "TIS",   title: "TIS Heatmap",          page: "tisheatmap.html",        run: runTis, probe: "cv" },
+];
+
+const FRAME_CSS = `
+  .top-nav > a[href*="index"], a.back { display: none !important; }
+  .wrap { padding-top: 14px !important; }
+  h1 { margin-top: 0 !important; }
+`;
+
+function selectTab(key) {
+  document.querySelectorAll(".tab").forEach(t => t.setAttribute("aria-selected", t.dataset.key === key));
+  document.querySelectorAll(".panel").forEach(p => p.classList.toggle("active", p.dataset.key === key));
+}
+
+// Keep every iframe as tall as its content (no inner scrollbars)
+let resizeTimer = null;
+function startAutoResize() {
+  if (resizeTimer) clearInterval(resizeTimer);
+  resizeTimer = setInterval(() => {
+    document.querySelectorAll(".panel iframe").forEach(f => {
+      try {
+        const d = f.contentDocument;
+        if (!d || !d.body) return;
+        const h = Math.max(d.documentElement.scrollHeight, d.body.scrollHeight);
+        if (h && Math.abs(h - f.offsetHeight) > 4) f.style.height = h + "px";
+      } catch (e) { /* cross-origin: leave as is */ }
+    });
+  }, 400);
+}
+
+let running = false;
+$("run-btn").addEventListener("click", async () => {
+  if (running) return;
+  if (!/^https?:$/.test(location.protocol)) {
+    $("run-msg").innerHTML = `<div class="msg error">這個頁面需要從 GitHub Pages 網址開啟（例如 https://arcadyanantenna.github.io/reporttools/all-in-one.html）。在預覽視窗或直接開啟本機檔案時，找不到其他工具頁，無法自動分析。檔案辨認仍可在這裡先確認。</div>`;
+    return;
+  }
+  running = true;
+  $("run-btn").disabled = true;
+  $("run-msg").innerHTML = "";
+  $("tabs").innerHTML = ""; $("panels").innerHTML = "";
+
+  const active = items.filter(it => it.chosen !== "NONE");
+  const byType = t => active.filter(it => it.chosen === t);
+  const radFreqs = Array.from(new Set(
+    active.filter(it => it.chosen === "TOTAL" || it.chosen === "CUT3").flatMap(it => radiationFreqs(it.text, it.chosen))
+  )).sort((a, b) => a - b);
+
+  const jobs = TOOLS.filter(t => byType(t.type).length).map(tool => {
+    const its = byType(tool.type);
+    const tab = document.createElement("button");
+    tab.className = "tab"; tab.dataset.key = tool.key; tab.setAttribute("role", "tab");
+    tab.innerHTML = `<span class="dot run"></span>${esc(tool.title)}<span style="color:var(--muted);font-weight:400;">${its.length}</span>`;
+    tab.addEventListener("click", () => selectTab(tool.key));
+    $("tabs").appendChild(tab);
+
+    const panel = document.createElement("div");
+    panel.className = "panel"; panel.dataset.key = tool.key; panel.setAttribute("role", "tabpanel");
+    panel.innerHTML = `<div class="panel-status"><span class="st">執行中…</span><a href="${tool.page}" target="_blank" rel="noopener">在新分頁開啟原工具 ↗</a></div><iframe title="${esc(tool.title)}"></iframe>`;
+    $("panels").appendChild(panel);
+    return { tool, its, tab, panel };
+  });
+
+  $("results").hidden = false;
+  if (jobs.length) selectTab(jobs[0].tool.key);
+  startAutoResize();
+
+  let sameOriginFail = false;
+  await Promise.all(jobs.map(async ({ tool, its, tab, panel }) => {
+    const iframe = panel.querySelector("iframe");
+    const st = panel.querySelector(".st");
+    const dot = tab.querySelector(".dot");
+    try {
+      await loadToolPage(iframe, tool.page);
+      const c = frameCtx(iframe);
+      if (!c.$(tool.probe)) throw new Error(`找不到 ${tool.page}（請確認它和 all-in-one.html 在同一個資料夾，且檔名完全相同）`);
+      const style = c.doc.createElement("style");
+      style.textContent = FRAME_CSS;
+      c.doc.head.appendChild(style);
+      const notes = await tool.run(c, its.map(it => it.file), { items: its, radFreqs });
+      st.textContent = `已自動執行（${its.length} 個檔案）` + (notes.length ? "。" + notes.join("；") : "") + "。設定可以直接在下方修改後重跑。";
+      dot.className = "dot ok";
+    } catch (err) {
+      dot.className = "dot err";
+      if (err.sameOrigin) {
+        sameOriginFail = true;
+        st.innerHTML = `<span class="err">無法控制此工具頁（需與 all-in-one.html 放在同一個網站資料夾）</span>`;
+      } else {
+        st.innerHTML = `<span class="err">自動執行停在這一步：${esc(err.message)}</span>，可以在下方手動完成`;
+      }
+    }
+  }));
+
+  const nOk = jobs.filter(j => j.tab.querySelector(".dot.ok")).length;
+  if (sameOriginFail) {
+    $("run-msg").innerHTML = `<div class="msg error">這個頁面要放在 GitHub Pages（與其他工具同一個資料夾）上使用。直接用瀏覽器開啟本機 HTML 檔時，瀏覽器會擋住頁面之間的存取。</div>`;
+  } else {
+    $("run-msg").innerHTML = `<div class="msg ${nOk === jobs.length ? "success" : "error"}">完成 ${nOk} / ${jobs.length} 項分析，結果在下方分頁。</div>`;
+  }
+  running = false;
+  renderList();
+});
+</script>
+</body>
+</html>
