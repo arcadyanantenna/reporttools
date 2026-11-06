@@ -45,6 +45,7 @@
     width: 100%; text-align: left; border: 1px solid var(--line); background: var(--input); padding: 7px 10px;
     border-radius: 8px; font: inherit; font-size: 12px; color: var(--text); cursor: pointer; word-break: break-all;
   }
+  .files li button small { display: block; color: var(--muted); font-size: 11px; margin-top: 2px; }
   .files li button:hover { border-color: #4a5260; }
   .files li button[aria-current="true"] { border-color: var(--primary); box-shadow: inset 3px 0 0 var(--primary); }
   .controls { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 14px; }
@@ -89,13 +90,16 @@
 <div class="wrap">
   <a class="back" href="index.html">← 回入口頁</a>
   <h1><span class="icon" aria-hidden="true">📡</span>TIS Heatmap</h1>
-  <p class="sub">上傳 Arcadyan chamber TIS CSV,產生 Theta / Phi / Total Heatmap 與四象限 Avg TIS 統計。</p>
+  <p class="sub">上傳 Arcadyan chamber TIS CSV(兩種匯出格式皆可),產生 Theta / Phi / Total Heatmap 與四象限 Avg TIS 統計。</p>
 
   <div class="layout">
     <aside class="side">
       <section class="card">
         <h2>① 上傳 TIS CSV</h2>
-        <p class="desc">Arcadyan chamber 匯出的 TIS CSV,自動轉成標準球座標(θ 0~180°、φ 0~360°)。可一次放多個檔案,只在瀏覽器內處理。</p>
+        <p class="desc">支援兩種 chamber 匯出格式,自動判斷並轉成標準球座標(θ 0~180°、φ 0~360°):<br>
+          ・格式 A:列 = θ −180~180°、欄 = φ 0~180°<br>
+          ・格式 B:列 = φ 0~360°、欄 = θ 0~180°<br>
+          可一次放多個檔案,只在瀏覽器內處理。</p>
         <label class="drop" id="drop">
           <input type="file" id="file" accept=".csv" multiple>
           <strong>選擇 CSV</strong> 或拖曳到這裡
@@ -165,42 +169,58 @@
 <script>
 /* ===================== core (parse / interpolate / stats) ===================== */
 const TIS_CORE = (() => {
+  /*
+   * 兩種 chamber 匯出格式,區塊標題列分別為:
+   *   格式 A: "<Pol>,Phi Angle (°),0,30,...,180"   → 每列一個 Theta(-180~180),每欄一個 Phi(0~180)
+   *   格式 B: "<Pol>,Theta Angle (°),0,30,...,180" → 每列一個 Phi(0~360),  每欄一個 Theta(0~180)
+   * 兩者都先轉成原始量測點 {t, p, v},再交給 toSphere() 正規化。
+   */
+  const FORMAT_NAME = { A: '格式 A(θ −180~180 × φ 0~180)', B: '格式 B(φ 0~360 × θ 0~180)' };
+
   function parseCSV(text) {
     const lines = text.replace(/\r\n?/g, '\n').split('\n');
     const blocks = {};
+    let format = null;
     for (const pol of ['Theta', 'Phi', 'Total']) {
-      const i = lines.findIndex(l => l.startsWith(pol + ',Phi Angle'));
+      const i = lines.findIndex(l => l.startsWith(pol + ',Phi Angle') || l.startsWith(pol + ',Theta Angle'));
       if (i < 0) continue;
-      const phis = lines[i].split(',').slice(2).filter(s => s.trim() !== '').map(Number);
-      const rows = [];
+      const colIsPhi = lines[i].startsWith(pol + ',Phi Angle');
+      format = colIsPhi ? 'A' : 'B';
+      const cols = lines[i].split(',').slice(2).filter(s => s.trim() !== '').map(Number);
+      const pts = [];
       for (let k = i + 2; k < lines.length; k++) {
         const c = lines[k].split(',');
         if (c.length < 3 || c[1].trim() === '' || isNaN(+c[1])) break;
-        rows.push({ theta: +c[1], vals: phis.map((_, j) => +c[2 + j]) });
+        const rowAng = +c[1];
+        cols.forEach((colAng, j) => {
+          const s = c[2 + j];
+          if (s === undefined || s.trim() === '' || isNaN(+s)) return;
+          pts.push(colIsPhi ? { t: rowAng, p: colAng, v: +s } : { t: colAng, p: rowAng, v: +s });
+        });
       }
-      blocks[pol] = { phis, rows };
+      blocks[pol] = { pts };
     }
+    // TIS:格式 A 只有 Total 一欄;格式 B 是 Theta / Phi / Total 並排 → 取該列最後一個 "TIS (dBm)" 後面的值(= Total)
     const meta = {};
     for (const l of lines) {
-      const c = l.split(',');
-      if (c[1] && c[1].trim() === 'TIS (dBm)') meta.tis = +c[2];
+      const c = l.split(',').map(s => s.trim());
+      const k = c.lastIndexOf('TIS (dBm)');
+      if (k >= 0 && c[k + 1] !== undefined && c[k + 1] !== '' && !isNaN(+c[k + 1])) { meta.tis = +c[k + 1]; break; }
     }
-    return { blocks, meta };
+    return { blocks, meta, format, formatName: format ? FORMAT_NAME[format] : '' };
   }
 
-  // Arcadyan great-circle cut (theta -180..180, phi 0..180) -> standard sphere (theta 0..180, phi 0..360)
+  // raw points -> standard sphere (theta 0..180, phi 0..360),負 θ 轉成 (−θ, φ+180),φ360 併回 φ0,極點合成單一點
   function toSphere(block) {
     const map = new Map();
-    for (const r of block.rows) {
-      block.phis.forEach((p, j) => {
-        let t = r.theta, ph = p;
-        if (t < 0) { t = -t; ph = p + 180; }
-        ph = ((ph % 360) + 360) % 360;
-        if (t === 0 || t === 180) ph = 0;               // pole: single point
-        const key = t + '_' + ph;
-        if (!map.has(key)) map.set(key, { t, p: ph, s: 0, n: 0 });
-        const e = map.get(key); e.s += r.vals[j]; e.n++;
-      });
+    for (const q of block.pts) {
+      let t = q.t, ph = q.p;
+      if (t < 0) { t = -t; ph = ph + 180; }
+      ph = ((ph % 360) + 360) % 360;
+      if (t === 0 || t === 180) ph = 0;               // pole: single point
+      const key = t + '_' + ph;
+      if (!map.has(key)) map.set(key, { t, p: ph, s: 0, n: 0 });
+      const e = map.get(key); e.s += q.v; e.n++;
     }
     return [...map.values()].map(e => ({ t: e.t, p: e.p, v: e.s / e.n }));
   }
@@ -335,7 +355,7 @@ function readFile(file) {
     const r = new FileReader();
     r.onload = () => res(r.result);
     r.onerror = () => rej(r.error);
-    r.readAsText(file, 'ISO-8859-1');            // chamber export uses Latin-1 (° sign)
+    r.readAsText(file, 'ISO-8859-1');            // 只依賴 ASCII 欄位,Latin-1 / Big5 匯出都能讀
   });
 }
 
@@ -345,7 +365,7 @@ async function addFiles(list) {
   for (const f of list) {
     try {
       const parsed = TIS_CORE.parseCSV(await readFile(f));
-      if (!parsed.blocks.Total) { bad.push(f.name); continue; }
+      if (!parsed.blocks.Total || !parsed.blocks.Total.pts.length) { bad.push(f.name); continue; }
       state.files.push({ name: f.name.replace(/\.csv$/i, ''), parsed });
     } catch (e) { bad.push(f.name); }
   }
@@ -363,6 +383,7 @@ function renderList() {
   state.files.forEach((f, i) => {
     const li = document.createElement('li'), b = document.createElement('button');
     b.textContent = f.name; b.setAttribute('aria-current', i === state.current);
+    const tag = document.createElement('small'); tag.textContent = f.parsed.formatName; b.appendChild(tag);
     b.onclick = () => select(i);
     li.appendChild(b); $('files').appendChild(li);
   });
@@ -497,7 +518,7 @@ function draw() {
 
   cv.hidden = false; $('empty').hidden = true; $('dl').disabled = false;
   $('status').className = 'status'; $('status').hidden = false;
-  $('status').textContent = `✅ Heatmap 已完成(${pol},色階 ${vmin} ~ ${vmax} dBm,柔和度 ${soft}°)`;
+  $('status').textContent = `✅ Heatmap 已完成(${pol},${f.parsed.formatName},色階 ${vmin} ~ ${vmax} dBm,柔和度 ${soft}°)`;
 
 }
 
