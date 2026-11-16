@@ -86,11 +86,24 @@
     border-color: var(--card-border-hover);
   }
 
+  .tool-card.featured {
+    border-color: rgba(79, 140, 255, 0.55);
+    background: rgba(79, 140, 255, 0.08);
+  }
+
+  .tool-card.featured:hover {
+    border-color: #4f8cff;
+  }
+
   .tool-number {
     font-size: 0.82rem;
     font-weight: 700;
     color: var(--muted);
     margin-bottom: 0.35rem;
+  }
+
+  .tool-card.featured .tool-number {
+    color: #4f8cff;
   }
 
   .tool-title {
@@ -123,6 +136,16 @@
     background: var(--link-hover-bg);
   }
 
+  .tool-card.featured .tool-link {
+    background: #4f8cff;
+    border-color: #4f8cff;
+    color: #ffffff;
+  }
+
+  .tool-card.featured .tool-link:hover {
+    filter: brightness(1.08);
+  }
+
   .footer-note {
     margin-top: 1.2rem;
     color: var(--muted);
@@ -137,6 +160,13 @@
     <div class="portal-subtitle">Select the analysis tool you want to use.</div>
 
     <div class="grid">
+      <div class="tool-card featured">
+        <div class="tool-number">00 · BATCH HUB</div>
+        <div class="tool-title">All-in-One Report Generator</div>
+        <div class="tool-desc">Drop an entire test folder or multiple CSV/EMQ files at once to auto-classify and generate all plots, statistics, and a downloadable ZIP package.</div>
+        <a class="tool-link" href="./all-in-one.html">Open Tool ↗</a>
+      </div>
+
       <div class="tool-card">
         <div class="tool-number">01</div>
         <div class="tool-title">Return Loss / VSWR / Isolation</div>
