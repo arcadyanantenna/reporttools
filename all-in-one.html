@@ -113,7 +113,7 @@
 </div>
 
 <script>
-const APP_VERSION = "v2026.11.16-embed10";
+const APP_VERSION = "v2026.11.16-embed17";
 document.getElementById("app-ver").textContent = APP_VERSION;
 let BUCKETS = { rl: [], iso: [], tableData: [], pattern2d: [], trp: [], tis: [], unknown: [] };
 
@@ -287,6 +287,57 @@ const BUCKET_LABELS = {
 };
 
 // 純內容指紋分類器（不看檔名）；每一類都以「對應解析器實際解析得出資料」為準，回傳 bucket 與判斷依據
+// 檔名中的天線名稱：以空白 / _ / - / + / & 分隔，例如「5G 6G2」→ [5G, 6G2]、「ANT1」→ [ANT1]、「DB1_BLE」→ [DB1, BLE]
+// 「ANT 1」這種分開寫的會合併成 ANT1；S11 / S21 / RL / ISO / VSWR 這類字不算天線名稱。
+function antTokens(fileName) {
+  const stem = fileName.replace(/\.[^.]+$/, "").replace(/\s*\(\d+\)$/, "");
+  const raw = stem.split(/[\s_\-+&,]+/).filter(Boolean);
+  const out = [];
+  for (let k = 0; k < raw.length; k++) {
+    let t = raw[k];
+    if (/^ant$/i.test(t) && /^\d+$/.test(raw[k + 1] || "")) { t += raw[++k]; }
+    if (/^(S\d\d|RL|ISO|isolation|VSWR|return|loss|log|mag|dB)$/i.test(t)) continue;
+    if (!out.includes(t)) out.push(t);
+  }
+  return out;
+}
+
+// 從 VNA CSV 取出要用的那一欄：RL 取 Sii（優先 S11），Isolation 取 Sij（優先 S21，其次 S12…）；找不到就用第一個資料欄
+// VNA CSV 表頭中所有資料欄名稱（不含 Freq）
+function vnaHeaders(text) {
+  const lines = text.split(/\r\n|\n|\r/);
+  const hi = lines.findIndex(l => /^\s*freq/i.test(l) && l.includes(","));
+  if (hi < 0) return [];
+  return lines[hi].split(",").map(s => s.trim()).filter(h => h && !/freq/i.test(h));
+}
+function vnaExtract(text, bucket, override) {
+  const lines = text.split(/\r\n|\n|\r/);
+  const hi = lines.findIndex(l => /^\s*freq/i.test(l) && l.includes(","));
+  if (hi < 0) return null;
+  const heads = lines[hi].split(",").map(s => s.trim());
+  const fi = heads.findIndex(h => /freq/i.test(h));
+  const sOf = h => { const m = h.match(/S(\d)(\d)/i); return m ? [m[1], m[2]] : null; };
+  const cand = heads.map((h, i) => ({ h, i, s: sOf(h) })).filter(c => c.i !== fi);
+  let pick = override ? cand.find(c => c.h === override) : null;
+  if (pick) {}
+  else if (bucket === "iso") {
+    const tr = cand.filter(c => c.s && c.s[0] !== c.s[1]);
+    pick = tr.find(c => c.s.join("") === "21") || tr[0];
+  } else {
+    const rf = cand.filter(c => c.s && c.s[0] === c.s[1]);
+    pick = rf.find(c => c.s.join("") === "11") || rf[0];
+  }
+  if (!pick) pick = cand[0];
+  if (!pick) return null;
+  const rows = [];
+  for (let k = hi + 1; k < lines.length; k++) {
+    const c = lines[k].split(",");
+    const f = parseFloat(c[fi]), v = parseFloat(c[pick.i]);
+    if (Number.isFinite(f) && Number.isFinite(v)) rows.push(c[fi].trim() + "," + c[pick.i].trim());
+  }
+  return { col: pick.h, freqHead: heads[fi], rows };
+}
+
 function classifyFile(fileName, text) {
   const lines = text.split(/\r\n|\n|\r/);
   const isEmq = /\.emq$/i.test(fileName);   // .emq 是檔案格式而非命名，仍可作為特徵
@@ -330,13 +381,16 @@ function classifyFile(fileName, text) {
   }
 
   // 5. 01 S 參數（VNA CSV：表頭列如「Freq(Hz),S11 Log Mag(dB)」）
+  //    先看檔名裡有幾支天線：1 支（ANT1）→ RL；2 支以上（ANT1_ANT2）→ Isolation。
+  //    檔名看不出來才看表頭：只有 Sij → Isolation，其餘 → RL。實際取哪一欄在送進工具時才決定（見 vnaExtract）。
   const hdr = lines.slice(0, 40).find(l => /^\s*freq/i.test(l) && l.includes(","));
   if (hdr) {
+    const ants = antTokens(fileName);
+    if (ants.length === 2) return { bucket: "iso", ok: true, reason: `檔名含 2 個天線 ${ants.join("、")} → Isolation（取 Sij）` };
+    if (ants.length === 1) return { bucket: "rl", ok: true, reason: `檔名含 1 個天線 ${ants[0]} → RL（取 Sii）` };
     const sp = [...hdr.matchAll(/S(\d)(\d)/gi)].map(m => [m[1], m[2]]);
-    const hasTrans = sp.some(([a, b]) => a !== b);
-    const hasRefl = sp.some(([a, b]) => a === b);
-    const iso = hasTrans && !hasRefl;
-    return { bucket: iso ? "iso" : "rl", ok: true, reason: `VNA 表頭「${hdr.slice(0, 50)}」→ ${iso ? "穿透 (Sij) → Isolation" : "反射 (Sii) → RL / VSWR"}` };
+    const iso = sp.some(([a, b]) => a !== b) && !sp.some(([a, b]) => a === b);
+    return { bucket: iso ? "iso" : "rl", ok: true, reason: `VNA 表頭 → ${iso ? "Isolation" : "RL / VSWR"}` };
   }
   return { bucket: "unknown", ok: false, reason: "沒有任何已知內容特徵" };
 }
@@ -751,6 +805,107 @@ function setupTrpExtras(win, doc) {
   };
 }
 
+// ---------- 01：圖例與折線圖分開 ----------
+// 折線圖關掉 Plotly 內建圖例、固定大小；圖例改成圖下方獨立的一區（可點選隱藏 / 顯示）。
+// 下載 PNG = 固定大小的折線圖 + 下方圖例拼成一張（同 2D Pattern 的做法），圖例再多也不會壓縮折線區。
+function setupSeparateLegend(win, doc) {
+  const st = doc.createElement("style");
+  st.textContent = `.aio-legend { width: 800px; max-width: 100%; background: #fff; color: #1a1a1a; display: flex; flex-wrap: wrap; justify-content: center;
+      gap: 6px 18px; padding: 8px 12px 10px; font: 13px "Open Sans", verdana, arial, sans-serif; border-top: 1px solid #eee; }
+    .aio-legend .it { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; user-select: none; }
+    .aio-legend .it.off { opacity: .35; }
+    .aio-legend .sw { display: inline-block; width: 26px; border-top: 2px solid; }
+    .aio-legend .ctl { flex-basis: 100%; display: flex; justify-content: center; gap: 8px; margin-bottom: 2px; }
+    .aio-legend .ctl button { padding: 2px 10px; border-radius: 6px; border: 1px solid #c9d1d9; background: #f6f8fa; color: #1f2328; font-size: 12px; cursor: pointer; }
+    .aio-legend .ctl button:hover { border-color: #8b5cf6; }`;
+  doc.head.appendChild(st);
+
+  const on = win.Plotly.newPlot;
+  win.Plotly.newPlot = function (gd, data, layout, cfg) {
+    const el = typeof gd === "string" ? doc.getElementById(gd) : gd;
+    const main = el && el.classList && el.classList.contains("plot-div");
+    if (main && layout) {
+      // 原工具 b = 55 + 18 + 圖例列數×24；圖例拿掉後固定 1 列的值，折線區大小與圖例多寡無關
+      layout = Object.assign({}, layout, { showlegend: false, margin: Object.assign({}, layout.margin, { b: 97 }) });
+    }
+    const p = on.call(this, gd, data, layout, cfg);
+    if (main) Promise.resolve(p).then(() => buildLegend(el));
+    return p;
+  };
+
+  function buildLegend(el) {
+    if (el.__aioLegendEl) el.__aioLegendEl.remove();
+    const groups = new Map();
+    (el.data || []).forEach((t, i) => {
+      const g = t.legendgroup || t.name;
+      if (!groups.has(g)) groups.set(g, { name: t.name, color: (t.line && t.line.color) || "#444", idx: [], hidden: false });
+      groups.get(g).idx.push(i);
+    });
+    const items = [...groups.values()];
+    const box = doc.createElement("div"); box.className = "aio-legend";
+    const spans = [];
+    if (items.length > 1) {
+      const ctl = doc.createElement("span"); ctl.className = "ctl";
+      ctl.innerHTML = '<button type="button" data-v="1">全部顯示</button><button type="button" data-v="0">全部隱藏</button>';
+      ctl.querySelectorAll("button").forEach(b => b.onclick = () => {
+        const v = b.dataset.v === "1";
+        items.forEach((it, i) => { it.hidden = !v; spans[i].classList.toggle("off", !v); });
+        win.Plotly.restyle(el, { visible: v }, items.flatMap(it => it.idx));
+      });
+      box.appendChild(ctl);
+    }
+    items.forEach(it => {
+      const s = doc.createElement("span"); s.className = "it";
+      s.innerHTML = `<span class="sw" style="border-color:${it.color}"></span>`;
+      s.appendChild(doc.createTextNode(it.name));
+      s.onclick = () => { it.hidden = !it.hidden; s.classList.toggle("off", it.hidden); win.Plotly.restyle(el, { visible: !it.hidden }, it.idx); };
+      spans.push(s);
+      box.appendChild(s);
+    });
+    el.after(box);
+    el.__aioLegendEl = box; el.__aioLegend = items;
+  }
+
+  const ti = win.Plotly.toImage;
+  win.Plotly.toImage = function (gd, opts) {
+    const el = typeof gd === "string" ? doc.getElementById(gd) : gd;
+    const p = ti.call(this, gd, opts);
+    if (!(el && el.__aioLegend)) return p;
+    const scale = (opts && opts.scale) || 1;
+    return p.then(url => new Promise(res => {
+      const img = new win.Image();
+      img.onload = () => {
+        const items = el.__aioLegend.filter(x => !x.hidden);
+        const W = img.width, fs = 14 * scale, sw = 26 * scale, gap = 6 * scale, igap = 22 * scale, rowH = 24 * scale, pad = 20 * scale;
+        const cv = doc.createElement("canvas"), ctx = cv.getContext("2d");
+        ctx.font = `${fs}px "Open Sans", verdana, arial, sans-serif`;
+        const rows = [[]]; let x = 0;
+        items.forEach(it => {
+          const w = sw + gap + ctx.measureText(it.name).width;
+          if (x > 0 && x + w > W - 2 * pad) { rows.push([]); x = 0; }
+          rows[rows.length - 1].push({ it, w }); x += w + igap;
+        });
+        cv.width = W; cv.height = img.height + (items.length ? rows.length * rowH + 12 * scale : 0);
+        ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, cv.width, cv.height);
+        ctx.drawImage(img, 0, 0);
+        ctx.font = `${fs}px "Open Sans", verdana, arial, sans-serif`; ctx.textBaseline = "middle";
+        rows.forEach((r, ri) => {
+          const tw = r.reduce((a, b) => a + b.w, 0) + igap * Math.max(0, r.length - 1);
+          let xx = (W - tw) / 2; const y = img.height + ri * rowH + rowH / 2;
+          r.forEach(({ it, w }) => {
+            ctx.strokeStyle = it.color; ctx.lineWidth = 2 * scale;
+            ctx.beginPath(); ctx.moveTo(xx, y); ctx.lineTo(xx + sw, y); ctx.stroke();
+            ctx.fillStyle = "#1a1a1a"; ctx.fillText(it.name, xx + sw + gap, y);
+            xx += w + igap;
+          });
+        });
+        res(cv.toDataURL("image/png"));
+      };
+      img.src = url;
+    }));
+  };
+}
+
 // ---------- 版面調整（只搬動 / 隱藏既有元素，不改任何工具邏輯） ----------
 // 1. 檔案已由 All-in-One 統一上傳 → 隱藏各工具自己的上傳區
 // 2. 設定區收合成一行「⚙️ 繪圖設定」放在最上方，出圖結果緊接在下面
@@ -836,6 +991,7 @@ function adaptLayout(key, doc) {
       return orig.call(this, gd, opts);
     };
   }
+  if ((key === "rl" || key === "iso") && win.Plotly) setupSeparateLegend(win, doc);
   if (key === "trp") setupTrpExtras(win, doc);
   if (key === "hm") { injectScript(doc, TRP_STYLE_JS); injectScript(doc, HM_PANEL_JS); }
   if (key === "tis") { injectScript(doc, TRP_STYLE_JS); injectScript(doc, TIS_PANEL_JS); }
@@ -863,10 +1019,42 @@ function adaptLayoutInner(key, doc) {
     det.appendChild(doc.querySelector(".top-nav"));
     if (key === "iso") {
       const c = doc.createElement("div"); c.className = "card";
+      const fc = doc.createElement("div"); fc.className = "card"; fc.style.gridColumn = "1 / -1";
+      fc.innerHTML = `<h2>Isolation 組合 <span id="aio-iso-count" style="font-weight:400;opacity:.75"></span></h2>
+        <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px;flex-wrap:wrap;">
+          <button type="button" class="aio-mini" data-a="all">全部顯示</button>
+          <button type="button" class="aio-mini" data-a="none">全部隱藏</button>
+          <span class="hint" style="margin:0 0 0 6px;">點格子＝顯示 / 隱藏該組；點天線名稱＝切換該天線所有組合；按住拖曳＝框選一整塊。紫色＝顯示中</span>
+        </div>
+        <div id="aio-iso-matrix" style="overflow-x:auto;"></div>`;
+      fc.querySelectorAll(".aio-mini[data-a]").forEach(b => b.addEventListener("click", () => doc.__aioIsoAll && doc.__aioIsoAll(b.dataset.a === "all")));
+      st.textContent += `.aio-mini { padding: 3px 10px; border-radius: 6px; border: 1px solid rgba(128,128,128,.45); background: rgba(128,128,128,.12);
+        color: inherit; font-size: 12px; cursor: pointer; } .aio-mini:hover { border-color: #8b5cf6; } .aio-mini.on { background: rgba(139,92,246,.55); border-color: #8b5cf6; color: #fff; }
+        table.aio-mx { border-collapse: separate; border-spacing: 3px; user-select: none; font-size: 12px; }
+        table.aio-mx th { font-weight: 600; padding: 2px 6px; cursor: pointer; white-space: nowrap; border-radius: 4px; }
+        table.aio-mx th:hover { background: rgba(139,92,246,.25); }
+        table.aio-mx th.corner { cursor: default; background: none; }
+        table.aio-mx th.rh { text-align: right; }
+        table.aio-mx td { width: 30px; height: 24px; border-radius: 4px; text-align: center; }
+        table.aio-mx td.pair { border: 1px solid rgba(139,92,246,.7); cursor: pointer; background: transparent; }
+        table.aio-mx td.pair.on { background: #8b5cf6; }
+        table.aio-mx td.pair:hover { outline: 2px solid #c4b5fd; }
+        table.aio-mx td.sel { outline: 2px dashed #fbbf24 !important; }
+        table.aio-mx td.none { background: rgba(128,128,128,.10); }
+        table.aio-mx td.diag { opacity: .4; }
+        table.aio-mx td.lower { background: none; }`;
+      det.appendChild(fc);
       const iw = $("iso-col-wrap");
       c.innerHTML = "<h2>Isolation 資料欄位</h2>"; c.appendChild(iw);
       iw.style.marginTop = "0";
       det.appendChild(c);
+    }
+    if (key === "rl") {
+      const c = doc.createElement("div"); c.className = "card";
+      c.innerHTML = `<h2>RL 資料欄位</h2><select id="aio-rl-col" style="width:100%"></select>
+        <div class="hint" style="margin-top:6px;">預設取 S11（沒有就取 S22）；改選後會立即重新出圖。所有檔案都用同一欄。</div>`;
+      det.appendChild(c);
+      c.querySelector("select").addEventListener("change", () => rlRefeed());
     }
     const modeCard = cardOf($("mode-row"));
     const upCard = cardOf($("file-input"));
@@ -987,31 +1175,180 @@ function msgState(el) {
   return /❌|失敗|error/i.test(t) || (el.querySelector && el.querySelector(".error")) ? "⚠️" : "✅";
 }
 
+// 01：圖例名稱 = 檔名中的天線（RL：5G；Isolation：5G 6G2），看不出來就用檔名
+function vnaLabels(items, bucket) {
+  const used = new Map();
+  return items.map(it => {
+    const ants = antTokens(it.file.name);
+    let label = bucket === "iso" ? (ants.length === 2 ? ants.join(" ") : it.name) : (ants.length === 1 ? ants[0] : it.name);
+    const n = (used.get(label) || 0) + 1; used.set(label, n);
+    return n > 1 ? `${label}(${n})` : label;
+  });
+}
+// 所有檔案共有的欄位中，挑預設欄：RL 取 Sii（優先 S11），Isolation 取 Sij（優先 S21，其次 S12）
+function vnaDefaultCol(items, bucket) {
+  const all = items.map(it => vnaHeaders(it.text));
+  const union = [...new Set(all.flat())];
+  const inAll = h => all.every(hs => hs.includes(h));
+  const sOf = h => { const m = h.match(/S(\d)(\d)/i); return m ? m[1] + m[2] : ""; };
+  const ok = h => bucket === "iso" ? (sOf(h) && sOf(h)[0] !== sOf(h)[1]) : (sOf(h) && sOf(h)[0] === sOf(h)[1]);
+  const pref = bucket === "iso" ? ["21", "12"] : ["11", "22"];
+  const cands = union.filter(ok).sort((a, b) => (inAll(b) - inAll(a)) || ((pref.indexOf(sOf(a)) + 99) % 100 - (pref.indexOf(sOf(b)) + 99) % 100));
+  return { union, def: cands[0] || union[0] || "" };
+}
+// RL：原工具只讀第一個資料欄 → 每個檔案只保留所選欄（欄名維持原檔名稱）；第一行放註解，避免單一檔案被當成 Combined CSV
+function rlToolFiles(win, items, col) {
+  const labels = vnaLabels(items, "rl");
+  return items.map((it, k) => {
+    const ex = vnaExtract(it.text, "rl", col);
+    if (!ex) return new win.File([it.file], labels[k] + ".csv", { type: "text/csv" });
+    return new win.File(["!All-in-One: " + it.file.name + " / " + ex.col + "\n" + ex.freqHead + "," + ex.col + "\n" + ex.rows.join("\n")],
+      labels[k] + ".csv", { type: "text/csv" });
+  });
+}
+// Isolation：原檔整份送進原工具（欄位名稱不變），由原工具的「Isolation 資料欄位」下拉選單決定抓哪一欄
+function isoToolFiles(win, items) {
+  const labels = vnaLabels(items, "iso");
+  return items.map((it, k) => new win.File([it.file], labels[k] + ".csv", { type: "text/csv" }));
+}
+// Isolation 矩陣：行 / 列 = 天線，每一格 = 一個 Isolation 檔（天線1 × 天線2）
+// 點格子：顯示 / 隱藏該組；點行或列標題：切換所有含該天線的組合；按住拖曳框選：一次切換整塊
+function buildIsoMatrix(doc, items) {
+  const box = doc.getElementById("aio-iso-matrix");
+  const on = doc.__aioIsoOn = new Set(items.map((_, k) => k));
+  const pairs = items.map(it => antTokens(it.file.name));
+  const ants = [...new Set(pairs.filter(p => p.length === 2).flat())]
+    .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+  const ai = new Map(ants.map((a, i) => [a, i]));
+  const cell = new Map();                       // "r,c" -> [file index]（上三角 r < c）
+  const others = [];                            // 檔名看不出兩支天線的檔案
+  pairs.forEach((p, k) => {
+    if (p.length !== 2) { others.push(k); return; }
+    let r = ai.get(p[0]), c = ai.get(p[1]);
+    if (r > c) [r, c] = [c, r];
+    const key = r + "," + c;
+    if (!cell.has(key)) cell.set(key, []);
+    cell.get(key).push(k);
+  });
+  const n = ants.length;
+  let html = `<table class="aio-mx"><thead><tr><th class="corner"></th>${ants.map((a, c) => `<th class="ch" data-a="${c}">${escapeHtml(a)}</th>`).join("")}</tr></thead><tbody>`;
+  for (let r = 0; r < n; r++) {
+    html += `<tr><th class="rh" data-a="${r}">${escapeHtml(ants[r])}</th>`;
+    for (let c = 0; c < n; c++) {
+      if (c === r) html += `<td class="diag">—</td>`;
+      else if (c < r) html += `<td class="lower"></td>`;
+      else if (cell.has(r + "," + c)) {
+        const ks = cell.get(r + "," + c);
+        html += `<td class="pair" data-r="${r}" data-c="${c}" title="${escapeHtml(ks.map(k => items[k].file.name).join("\n"))}"></td>`;
+      } else html += `<td class="none"></td>`;
+    }
+    html += `</tr>`;
+  }
+  html += `</tbody></table>`;
+  if (others.length) html += `<div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap;align-items:center;"><span style="font-size:12px;opacity:.75;">其他檔案：</span>${
+    others.map(k => `<button type="button" class="aio-mini aio-other" data-k="${k}">${escapeHtml(items[k].name)}</button>`).join("")}</div>`;
+  box.innerHTML = html;
+
+  const tds = Array.from(box.querySelectorAll("td.pair"));
+  const ksOf = td => cell.get(td.dataset.r + "," + td.dataset.c);
+  const isOn = td => ksOf(td).every(k => on.has(k));
+  const paint = () => {
+    tds.forEach(td => td.classList.toggle("on", isOn(td)));
+    box.querySelectorAll(".aio-other").forEach(b => b.classList.toggle("on", on.has(+b.dataset.k)));
+    const cnt = doc.getElementById("aio-iso-count");
+    if (cnt) cnt.textContent = `（顯示 ${on.size} / ${items.length}）`;
+  };
+  const apply = (tdList, v) => { tdList.forEach(td => ksOf(td).forEach(k => v ? on.add(k) : on.delete(k))); paint(); isoRefeedSoon(); };
+
+  // 標題：切換所有含該天線的組合
+  box.querySelectorAll("th.rh, th.ch").forEach(th => th.addEventListener("click", () => {
+    const a = +th.dataset.a;
+    const list = tds.filter(td => +td.dataset.r === a || +td.dataset.c === a);
+    apply(list, !list.every(isOn));
+  }));
+  // 格子：點一下切換；拖曳框選一整塊
+  let start = null, cur = null;
+  const inRect = td => {
+    const r = +td.dataset.r, c = +td.dataset.c;
+    return r >= Math.min(start.r, cur.r) && r <= Math.max(start.r, cur.r) && c >= Math.min(start.c, cur.c) && c <= Math.max(start.c, cur.c);
+  };
+  const hl = () => tds.forEach(td => td.classList.toggle("sel", !!start && inRect(td)));
+  box.querySelectorAll("td.pair, td.none, td.lower, td.diag").forEach(td => {
+    const pos = () => { const tr = td.parentElement; return { r: tr.rowIndex - 1, c: td.cellIndex - 1 }; };
+    td.addEventListener("mousedown", e => { e.preventDefault(); start = cur = pos(); start.td = td.classList.contains("pair") ? td : null; hl(); });
+    td.addEventListener("mouseenter", () => { if (start) { cur = pos(); hl(); } });
+  });
+  const up = () => {
+    if (!start) return;
+    const list = tds.filter(inRect);
+    const v = start.td ? !isOn(start.td) : !list.every(isOn);
+    start = null; hl();
+    if (list.length) apply(list, v);
+  };
+  if (doc.__aioIsoUp) doc.removeEventListener("mouseup", doc.__aioIsoUp);
+  doc.__aioIsoUp = up; doc.addEventListener("mouseup", up);
+  box.querySelectorAll(".aio-other").forEach(b => b.addEventListener("click", () => {
+    const k = +b.dataset.k; on.has(k) ? on.delete(k) : on.add(k); paint(); isoRefeedSoon();
+  }));
+  doc.__aioIsoAll = v => { items.forEach((_, k) => v ? on.add(k) : on.delete(k)); paint(); isoRefeedSoon(); };
+  paint();
+}
+
+let isoTimer = null;
+function isoRefeedSoon() {            // 連續勾選時只重畫一次
+  clearTimeout(isoTimer);
+  isoTimer = setTimeout(async () => {
+    const t = TOOLS.find(x => x.key === "iso");
+    if (!t.iframe || !BUCKETS.iso.length) return;
+    const win = t.iframe.contentWindow;
+    setStatus(t, "⏳");
+    setStatus(t, await RUNNERS.iso(t, win, win.document, BUCKETS.iso, true) || "✅");
+  }, 350);
+}
+async function rlRefeed() {
+  const t = TOOLS.find(x => x.key === "rl");
+  if (!t.iframe || !BUCKETS.rl.length) return;
+  const win = t.iframe.contentWindow;
+  setStatus(t, "⏳");
+  setStatus(t, await RUNNERS.rl(t, win, win.document, BUCKETS.rl, true) || "✅");
+}
+
 const RUNNERS = {
-  async rl(t, win, doc, items) {
+  async rl(t, win, doc, items, keepSel) {
     doc.querySelector('input[name="mode"][value="rl_vswr"]').click();
-    setFiles(win, doc.getElementById("file-input"), toToolFiles(win, items.map(x => x.file)));
+    const sel = doc.getElementById("aio-rl-col");
+    const { union, def } = vnaDefaultCol(items, "rl");
+    const prev = sel.value;
+    sel.innerHTML = union.map(h => `<option value="${escapeHtml(h)}">${escapeHtml(h)}</option>`).join("");
+    sel.value = keepSel && union.includes(prev) ? prev : def;
+    doc.getElementById("msg-box").innerHTML = "";
+    setFiles(win, doc.getElementById("file-input"), rlToolFiles(win, items, sel.value));
     doc.getElementById("run-btn").click();
     await waitFor(() => doc.getElementById("msg-box").textContent.trim());
     return msgState(doc.getElementById("msg-box"));
   },
-  async iso(t, win, doc, items) {
+  async iso(t, win, doc, items, keepSel) {
     doc.querySelector('input[name="mode"][value="iso"]').click();
-    // 依內容找出穿透參數欄位（Sij, i≠j），避免誤抓 S11
-    let col = null;
-    for (const it of items) {
-      const hdr = it.text.split(/\r\n|\n|\r/).find(l => /^\s*freq/i.test(l) && l.includes(","));
-      if (!hdr) continue;
-      col = hdr.split(",").map(s => s.trim()).find(c => { const m = c.match(/S(\d)(\d)/i); return m && m[1] !== m[2]; });
-      if (col) break;
-    }
-    const sel = doc.getElementById("iso-col-select");
-    if (col) {
-      const opt = Array.from(sel.options).find(o => o.value.toLowerCase() === col.toLowerCase());
-      if (opt) sel.value = opt.value; else { sel.value = "__custom__"; doc.getElementById("iso-col-custom").value = col; }
+    const labels = vnaLabels(items, "iso");
+    if (!keepSel) {
+      // 預設欄位：所有檔案都有的 Sij（優先 S21，其次 S12）；欄位名稱維持原檔，可在設定裡的下拉選單改選
+      const { def } = vnaDefaultCol(items, "iso");
+      const sel = doc.getElementById("iso-col-select");
+      const opt = Array.from(sel.options).find(o => o.value.toLowerCase() === def.toLowerCase());
+      if (opt) sel.value = opt.value;
+      else { sel.value = "__custom__"; doc.getElementById("iso-col-custom").value = def; }
       sel.dispatchEvent(new win.Event("change", { bubbles: true }));
+      buildIsoMatrix(doc, items);
     }
-    setFiles(win, doc.getElementById("file-input"), toToolFiles(win, items.map(x => x.file)));
+    const on = doc.__aioIsoOn || new Set(items.map((_, k) => k));
+    const files = isoToolFiles(win, items).filter((_, k) => on.has(k));
+    doc.getElementById("msg-box").innerHTML = "";
+    if (!files.length) {
+      doc.getElementById("results").innerHTML = "";
+      doc.getElementById("msg-box").innerHTML = '<div class="msg error">目前沒有顯示任何組合，請在設定的 Isolation 矩陣中點選。</div>';
+      return "⚠️";
+    }
+    setFiles(win, doc.getElementById("file-input"), files);
     doc.getElementById("run-btn").click();
     await waitFor(() => doc.getElementById("msg-box").textContent.trim());
     return msgState(doc.getElementById("msg-box"));
