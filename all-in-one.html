@@ -113,7 +113,7 @@
 </div>
 
 <script>
-const APP_VERSION = "v2026.11.16-embed17";
+const APP_VERSION = "v2026.11.16-embed20";
 document.getElementById("app-ver").textContent = APP_VERSION;
 let BUCKETS = { rl: [], iso: [], tableData: [], pattern2d: [], trp: [], tis: [], unknown: [] };
 
@@ -843,23 +843,11 @@ function setupSeparateLegend(win, doc) {
     });
     const items = [...groups.values()];
     const box = doc.createElement("div"); box.className = "aio-legend";
-    const spans = [];
-    if (items.length > 1) {
-      const ctl = doc.createElement("span"); ctl.className = "ctl";
-      ctl.innerHTML = '<button type="button" data-v="1">全部顯示</button><button type="button" data-v="0">全部隱藏</button>';
-      ctl.querySelectorAll("button").forEach(b => b.onclick = () => {
-        const v = b.dataset.v === "1";
-        items.forEach((it, i) => { it.hidden = !v; spans[i].classList.toggle("off", !v); });
-        win.Plotly.restyle(el, { visible: v }, items.flatMap(it => it.idx));
-      });
-      box.appendChild(ctl);
-    }
     items.forEach(it => {
       const s = doc.createElement("span"); s.className = "it";
       s.innerHTML = `<span class="sw" style="border-color:${it.color}"></span>`;
       s.appendChild(doc.createTextNode(it.name));
       s.onclick = () => { it.hidden = !it.hidden; s.classList.toggle("off", it.hidden); win.Plotly.restyle(el, { visible: !it.hidden }, it.idx); };
-      spans.push(s);
       box.appendChild(s);
     });
     el.after(box);
@@ -1061,6 +1049,16 @@ function adaptLayoutInner(key, doc) {
     Array.from(wrap.children).filter(el => el.classList.contains("card")).forEach(c => det.appendChild(c));
     det.appendChild($("run-btn"));
     hide(upCard);
+    // Y 軸設定只留該分頁用得到的：RL 分頁隱藏 Isolation，Isolation 分頁隱藏 RL / VSWR
+    if (key === "iso") { hide($("y-rl")); hide($("y-vswr")); }
+    else hide($("y-iso"));
+    // 「清除非頻段範圍」直接外露，放到「5. 塗色頻段」卡片裡（跟頻段選擇放在一起）；原本只放它的「7. 進階設定」隱藏
+    {
+      const cb = $("clean-non-band"), lab = cb.closest("label"), adv = cardOf(cb), bandCard = cardOf($("band-checks"));
+      lab.style.marginTop = "8px";
+      bandCard.appendChild(lab);
+      hide(adv);
+    }
     if (key === "iso") hide(modeCard);
     else hide(doc.querySelector('input[name="mode"][value="iso"]').closest("label"));
   }
