@@ -3,12 +3,16 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>All-in-One 天線分析</title>
+<title>All-in-One Antenna Report Generator</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/plotly.js/2.32.0/plotly.min.js"></script>
+<script>if (!window.Plotly) document.write('<script src="https://cdn.plot.ly/plotly-2.32.0.min.js"><\/script>');</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <style>
   :root {
     --bg: #0d1117; --card: #161b22; --line: #30363d; --input: #0d1117;
     --text: #e6edf3; --muted: #8b949e; --primary: #4f8cff; --primary-hover: #6b9dff;
-    --ok-bg: #12261c; --ok: #3fb950; --err-bg: #2d1416; --err: #f85149; --warn: #e3b341;
+    --ok-bg: #12261c; --ok: #3fb950; --err-bg: #2d1416; --err: #f85149; --warn-bg: #2b2410; --warn: #e3b341;
     color-scheme: dark;
   }
   * { box-sizing: border-box; }
@@ -17,629 +21,1316 @@
     font-family: "Segoe UI", "Microsoft JhengHei", "PingFang TC", "Noto Sans TC", system-ui, sans-serif;
     font-size: 14px; line-height: 1.5;
   }
-  .wrap { max-width: 1600px; margin: 0 auto; padding: 18px 24px 48px; }
+  .wrap { max-width: 1560px; margin: 0 auto; padding: 18px 24px 60px; }
+  .top-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; flex-wrap: wrap; gap: 10px; }
   .back { color: var(--muted); text-decoration: none; font-size: 14px; }
   .back:hover { color: var(--text); }
-  h1 { display: flex; align-items: center; gap: 12px; margin: 22px 0 4px; font-size: 30px; font-weight: 800; }
-  .sub { margin: 0 0 22px; color: var(--muted); font-size: 14px; }
-  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 20px; margin-bottom: 16px; }
-  .card h2 { margin: 0 0 10px; font-size: 17px; font-weight: 700; }
-  .desc { margin: 0 0 14px; color: var(--muted); font-size: 12.5px; line-height: 1.6; }
+  h1 { margin: 0 0 4px; font-size: 28px; font-weight: 800; }
+  .sub { margin: 0 0 20px; color: var(--muted); font-size: 14px; }
 
-  .drop {
-    display: block; border: 1.5px dashed #3d4654; border-radius: 10px; background: var(--input);
-    padding: 34px 12px; text-align: center; color: var(--muted); cursor: pointer;
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 20px; margin-bottom: 18px; }
+  .card h2 { margin: 0 0 12px; font-size: 17px; font-weight: 700; }
+  .card h3 { margin: 22px 0 4px; font-size: 15px; font-weight: 700; }
+  .card h3:first-of-type { margin-top: 6px; }
+  .desc, .note { margin: 0 0 12px; color: var(--muted); font-size: 12.5px; line-height: 1.6; }
+
+  .drop-zone {
+    border: 2px dashed #3d4654; border-radius: 12px; background: var(--input);
+    padding: 30px 20px; text-align: center; cursor: pointer; transition: 0.2s;
   }
-  .drop.over, .drop:hover { border-color: var(--primary); color: var(--text); }
-  .drop strong { color: var(--primary); }
-  .drop input { display: none; }
-
-  .chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 12px; }
-  .chip { border: 1px solid var(--line); border-radius: 999px; padding: 3px 12px; font-size: 13px; color: var(--muted); }
-  .chip b { color: var(--text); margin-left: 4px; }
-  .chip.bad { border-color: #5a4a1a; color: var(--warn); }
-
-  .tbl-wrap { overflow-x: auto; }
-  table.files { width: 100%; border-collapse: collapse; font-size: 13px; }
-  table.files th { text-align: left; color: var(--muted); font-weight: 600; padding: 6px 10px; border-bottom: 1px solid var(--line); }
-  table.files td { padding: 7px 10px; border-bottom: 1px solid #21262d; vertical-align: middle; }
-  table.files td.fname { word-break: break-all; max-width: 420px; }
-  table.files td.reason { color: var(--muted); font-size: 12.5px; }
-  table.files tr.none td.fname { color: var(--muted); }
-  table.files tr.ambiguous td { background: rgba(227, 179, 65, 0.07); }
-  table.files tr.ambiguous td.reason { color: var(--warn); }
-  table.files select {
-    height: 32px; padding: 0 8px; background: var(--input); color: var(--text);
-    border: 1px solid var(--line); border-radius: 6px; font: inherit; font-size: 13px; min-width: 230px;
+  .drop-zone.over, .drop-zone:hover { border-color: var(--primary); background: rgba(79,140,255,0.06); }
+  .drop-zone strong { color: var(--primary); font-size: 16px; }
+  .drop-btns { display: flex; gap: 12px; justify-content: center; margin-top: 12px; flex-wrap: wrap; }
+  .btn {
+    padding: 9px 16px; border-radius: 8px; border: 1px solid var(--line);
+    background: #21262d; color: var(--text); font-weight: 600; cursor: pointer; font-size: 13.5px;
   }
-  .rm { border: 0; background: none; color: var(--muted); cursor: pointer; font-size: 16px; padding: 2px 6px; }
-  .rm:hover { color: var(--err); }
+  .btn:hover { border-color: var(--primary); }
+  .btn.primary { background: var(--primary); border-color: var(--primary); color: #fff; }
+  .btn.primary:hover { background: var(--primary-hover); }
+  .btn.success { background: #238636; border-color: #2ea043; color: #fff; }
+  .btn:disabled { opacity: 0.45; cursor: not-allowed; }
 
-  button.primary {
-    width: 100%; border: 0; border-radius: 8px; background: var(--primary); color: #fff; padding: 12px 14px;
-    font: inherit; font-size: 15px; font-weight: 700; cursor: pointer;
-  }
-  button.primary:hover { background: var(--primary-hover); }
-  button.primary:disabled { opacity: .45; cursor: not-allowed; }
-  button.ghost {
-    border: 1px solid var(--line); border-radius: 8px; background: none; color: var(--muted);
-    padding: 6px 12px; font: inherit; font-size: 13px; cursor: pointer;
-  }
-  button.ghost:hover { color: var(--text); border-color: var(--muted); }
-  button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+  .summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(215px, 1fr)); gap: 12px; margin-top: 16px; }
+  .stat-box { background: var(--input); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; }
+  .stat-box .title { font-size: 12px; color: var(--muted); }
+  .stat-box .num { font-size: 22px; font-weight: 800; margin: 2px 0; color: var(--primary); }
+  .stat-box .files-preview { font-size: 11.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-  .msg { padding: 10px 14px; border-radius: 8px; font-size: 13px; margin-top: 12px; }
-  .msg.success { background: var(--ok-bg); color: var(--ok); }
-  .msg.error { background: var(--err-bg); color: var(--err); }
-
-  /* result tabs */
-  .tabs { display: flex; flex-wrap: wrap; gap: 6px; margin: 26px 0 0; border-bottom: 1px solid var(--line); }
-  .tab {
-    border: 1px solid transparent; border-bottom: 0; border-radius: 8px 8px 0 0; background: none;
-    color: var(--muted); padding: 9px 16px; font: inherit; font-size: 14px; font-weight: 600; cursor: pointer;
-    display: inline-flex; align-items: center; gap: 8px; margin-bottom: -1px;
+  .settings-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; }
+  .field label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+  .field input, .field select {
+    width: 100%; height: 34px; padding: 0 10px; border-radius: 6px;
+    border: 1px solid var(--line); background: var(--input); color: var(--text);
   }
-  .tab:hover { color: var(--text); }
-  .tab[aria-selected="true"] { color: var(--text); background: var(--card); border-color: var(--line); }
-  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
-  .dot.run { background: var(--primary); animation: pulse 1s infinite alternate; }
-  .dot.ok { background: var(--ok); }
-  .dot.err { background: var(--err); }
-  @keyframes pulse { from { opacity: .35; } to { opacity: 1; } }
-  @media (prefers-reduced-motion: reduce) { .dot.run { animation: none; } }
+  .check-group { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 4px; }
+  .check-group label { display: inline-flex; align-items: center; gap: 5px; font-size: 13px; color: var(--text); cursor: pointer; }
 
-  /* Inactive panels stay laid out off-screen so the charts inside get real widths */
-  .panels { position: relative; }
-  .panel { position: absolute; left: -100000px; top: 0; width: 100%; visibility: hidden; }
-  .panel.active { position: static; visibility: visible; }
-  .panel-status {
-    background: var(--card); border: 1px solid var(--line); border-top: 0; padding: 10px 16px;
-    font-size: 13px; color: var(--muted); display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+  .tabs { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; border-bottom: 1px solid var(--line); padding-bottom: 12px; }
+  .tab-btn {
+    padding: 9px 16px; border-radius: 8px; border: 1px solid var(--line);
+    background: var(--card); color: var(--text); font-weight: 600; cursor: pointer;
   }
-  .panel-status .err { color: var(--err); }
-  .panel-status a { color: var(--primary); text-decoration: none; }
-  .panel iframe { display: block; width: 100%; height: 900px; border: 1px solid var(--line); border-top: 0; border-radius: 0 0 12px 12px; background: var(--bg); }
+  .tab-btn.active { background: var(--primary); border-color: var(--primary); color: #fff; }
+  .tab-btn .badge {
+    display: inline-block; margin-left: 6px; padding: 1px 7px; border-radius: 10px;
+    background: rgba(255,255,255,0.15); font-size: 11.5px;
+  }
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
+
+  .chart-grid { display: flex; flex-direction: column; gap: 18px; }
+  .chart-box { background: #fff; border-radius: 10px; padding: 12px; color: #1a1a1a; }
+  .chart-box .plot-area { width: 100%; height: 520px; }
+  .chart-box .hm-area { width: 100%; aspect-ratio: 630 / 320; height: auto; }
+  .chart-box canvas { width: 100%; height: auto; display: block; border-radius: 6px; }
+  .chart-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 8px; padding-top: 8px; border-top: 1px solid #e5e7eb; flex-wrap: wrap; gap: 8px; }
+  .chart-footer span { font-size: 13px; color: #24292f; font-weight: 700; }
+  .dl-mini { padding: 6px 12px; border-radius: 6px; border: 1px solid #c9d1d9; background: #f6f8fa; color: #24292f; font-size: 12.5px; font-weight: 600; cursor: pointer; }
+  .dl-mini:hover { border-color: var(--primary); color: var(--primary); }
+
+  /* 2D Pattern 三平面並排 */
+  .pattern-row { display: flex; flex-wrap: nowrap; gap: 10px; justify-content: center; overflow-x: auto; }
+  .pattern-item .polar-div { width: 380px; height: 400px; }
+  .pattern-legend { display: flex; flex-wrap: wrap; gap: 18px; justify-content: center; margin-top: 4px; padding-top: 8px; }
+  .pattern-legend .item { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: #1a1a1a; cursor: pointer; user-select: none; }
+  .pattern-legend .item.legend-hidden { opacity: 0.35; }
+  .pattern-legend .swatch { display: inline-block; width: 26px; height: 0; border-top: 3px solid; }
+  .pattern-legend .swatch.dashed { border-top-style: dashed; }
+
+  .tbl-wrap { overflow-x: auto; margin-top: 8px; }
+  table.stats { width: 100%; border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; }
+  table.stats th, table.stats td { border: 1px solid var(--line); padding: 8px 10px; text-align: center; white-space: nowrap; }
+  table.stats thead th { background: #1c232c; color: var(--text); font-weight: 700; }
+  table.stats tr.comp td { background: #1a2433; font-weight: 700; }
+
+  .msg { padding: 10px 14px; border-radius: 8px; margin-top: 12px; font-size: 13px; }
+  .msg.ok { background: var(--ok-bg); color: var(--ok); }
+  .msg.warn { background: var(--warn-bg); color: var(--warn); }
   [hidden] { display: none !important; }
 </style>
 </head>
 <body>
 <div class="wrap">
-  <a class="back" href="./index.html">← 回入口頁</a>
-  <h1><span aria-hidden="true">📡</span>All-in-One 天線分析</h1>
-  <p class="sub">一次放入所有量測檔，依檔案內容自動分類，再交給各個分析工具一起執行。</p>
+  <div class="top-bar">
+    <a class="back" href="./index.html">← 回入口頁</a>
+    <button class="btn success" id="zip-all-btn" disabled>📦 一鍵打包下載全部圖表 (.zip)</button>
+  </div>
+  <h1>🚀 All-in-One Antenna Report Generator</h1>
+  <p class="sub">一次拖入整個專案測試資料夾或所有 CSV / EMQ，自動辨識檔案格式並套用完整演算法繪製全套報告圖表與統計表。</p>
 
-  <section class="card">
-    <h2>① 放入所有檔案</h2>
-    <p class="desc">RL、Isolation、TOTAL、3CUT、TRP、TIS 可以混在一起放。分類只看檔案內容，不看檔名或副檔名；檔案只在瀏覽器內處理。</p>
-    <label class="drop" id="drop">
-      <input type="file" id="file-input" multiple />
-      <strong>選擇檔案</strong> 或拖曳到這裡（可分批加入）
-    </label>
-  </section>
-
-  <section class="card" id="list-card" hidden>
-    <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;">
-      <h2 style="margin:0;">② 確認分類</h2>
-      <button class="ghost" id="clear-btn">清除全部</button>
+  <!-- 1. 上傳區 -->
+  <div class="card">
+    <h2>① 上傳所有測試檔案</h2>
+    <div class="drop-zone" id="drop-zone">
+      <strong>將整個測試資料夾或多個 CSV / EMQ 檔案拖曳到這裡</strong>
+      <div style="color:var(--muted); font-size:12.5px; margin-top:4px;">自動辨識 S11 / Isolation / TableData (Efficiency & 3D Heatmap) / 3cut 2D Pattern / EMQuest TRP / Chamber TIS</div>
+      <div class="drop-btns">
+        <button class="btn primary" id="pick-files-btn">選擇多個檔案</button>
+        <button class="btn" id="pick-dir-btn">選擇整個資料夾</button>
+      </div>
+      <input type="file" id="file-input" multiple accept=".csv,.emq" hidden>
+      <input type="file" id="dir-input" webkitdirectory multiple hidden>
     </div>
-    <p class="desc" style="margin-top:8px;">判斷錯誤時可以直接改下拉選單。標成「無法辨認」的檔案不會被分析。</p>
-    <div class="chips" id="chips"></div>
-    <div class="tbl-wrap">
-      <table class="files">
-        <thead><tr><th>檔名</th><th>分類</th><th>判斷依據</th><th></th></tr></thead>
-        <tbody id="file-rows"></tbody>
-      </table>
-    </div>
-    <div style="margin-top:16px;"><button class="primary" id="run-btn">③ 開始分析</button></div>
-    <div id="run-msg"></div>
-  </section>
 
-  <div id="results" hidden>
-    <div class="tabs" role="tablist" id="tabs"></div>
-    <div class="panels" id="panels"></div>
+    <div id="detect-summary" hidden>
+      <div class="summary-grid" id="summary-cards"></div>
+      <div id="unknown-msg"></div>
+    </div>
+  </div>
+
+  <!-- 2. 繪圖設定 -->
+  <div class="card" id="settings-card" hidden>
+    <h2>② 全域報告參數設定</h2>
+    <div class="settings-grid">
+      <div class="field">
+        <label>目標頻段（塗色與分段顯示）</label>
+        <div class="check-group" id="global-bands">
+          <label><input type="checkbox" value="2.4G" checked> 2.4G</label>
+          <label><input type="checkbox" value="5G" checked> 5G</label>
+          <label><input type="checkbox" value="6G" checked> 6G</label>
+          <label><input type="checkbox" value="LB"> LB</label>
+          <label><input type="checkbox" value="MB"> MB</label>
+          <label><input type="checkbox" value="CB"> CB</label>
+        </div>
+      </div>
+      <div class="field">
+        <label>Return Loss SPEC (dB, 留空不畫線)</label>
+        <input type="number" id="cfg-rl-spec" value="-10" step="1">
+      </div>
+      <div class="field">
+        <label>Heatmap 極化</label>
+        <select id="cfg-pol">
+          <option value="Total" selected>Total</option>
+          <option value="Theta">Theta (Vertical)</option>
+          <option value="Phi">Phi (Horizontal)</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>TRP / TIS 柔和度 (0°~25°)</label>
+        <input type="number" id="cfg-soft" value="10" min="0" max="25" step="1">
+      </div>
+      <div class="field">
+        <label>2D Pattern Scale Min / Max (dBi)</label>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
+          <input type="number" id="cfg-2d-min" value="-40" step="1">
+          <input type="number" id="cfg-2d-max" value="5" step="1">
+        </div>
+      </div>
+      <div class="field">
+        <label>Homogenous / MIMO Threshold A (dB)</label>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
+          <input type="number" id="cfg-homo-a" value="6" step="0.5" title="Homogenous Max-A">
+          <input type="number" id="cfg-mimo-a" value="3" step="0.5" title="MIMO Threshold A">
+        </div>
+      </div>
+    </div>
+    <button class="btn primary" id="render-all-btn" style="margin-top:14px; width:100%;">⚡ 產生 / 更新全部圖表</button>
+  </div>
+
+  <!-- 3. 結果分頁區 -->
+  <div id="output-section" hidden>
+    <div class="tabs" id="result-tabs">
+      <button class="tab-btn active" data-target="panel-rl">01 RL / VSWR / Iso <span class="badge" id="cnt-rl">0</span></button>
+      <button class="tab-btn" data-target="panel-eff">02 Efficiency & Gain <span class="badge" id="cnt-eff">0</span></button>
+      <button class="tab-btn" data-target="panel-2d">03 2D Pattern <span class="badge" id="cnt-2d">0</span></button>
+      <button class="tab-btn" data-target="panel-hm">04 3D / Homogenous / MIMO <span class="badge" id="cnt-hm">0</span></button>
+      <button class="tab-btn" data-target="panel-trp">05 TRP Heatmap <span class="badge" id="cnt-trp">0</span></button>
+      <button class="tab-btn" data-target="panel-tis">06 TIS Heatmap <span class="badge" id="cnt-tis">0</span></button>
+    </div>
+
+    <div class="tab-panel active" id="panel-rl"><div class="chart-grid" id="grid-rl"></div></div>
+    <div class="tab-panel" id="panel-eff"><div class="chart-grid" id="grid-eff"></div></div>
+    <div class="tab-panel" id="panel-2d"><div class="chart-grid" id="grid-2d"></div></div>
+    <div class="tab-panel" id="panel-hm"><div class="chart-grid" id="grid-hm"></div></div>
+    <div class="tab-panel" id="panel-trp">
+      <div class="chart-grid" id="grid-trp"></div>
+      <div class="card" style="margin-top:16px;"><h2>TRP 半球統計 (Total, dBm)</h2><div class="tbl-wrap" id="tbl-trp"></div></div>
+    </div>
+    <div class="tab-panel" id="panel-tis">
+      <div class="chart-grid" id="grid-tis"></div>
+      <div class="card" style="margin-top:16px;"><h2>TIS 半球統計與四象限 Avg TIS (Total, dBm)</h2><div class="tbl-wrap" id="tbl-tis"></div></div>
+    </div>
   </div>
 </div>
 
 <script>
-// =====================================================================
-// 1. Content-based classifier (filename / extension are never used)
-// =====================================================================
-const TYPE_LABELS = {
-  RL: "Return Loss / VSWR",
-  ISO: "Isolation",
-  TOTAL: "TOTAL（Efficiency / Gain / Heatmap）",
-  CUT3: "3CUT（2D Pattern）",
-  TRP: "TRP",
-  TIS: "TIS",
-  NONE: "無法辨認（不分析）",
+const COLORS = ["#1f77b4","#ff7f0e","#2ca02c","#d62728","#9467bd","#8c564b","#e377c2","#7f7f7f","#bcbd22","#17becf"];
+const BAND_DEFS = {
+  "2.4G": [2400, 2500],
+  "5G": [5150, 5850],
+  "6G": [5925, 7125],
+  "LB": [617, 960],
+  "MB": [1710, 2700],
+  "CB": [3300, 5000]
 };
-const TYPE_ORDER = ["RL", "ISO", "TOTAL", "CUT3", "TRP", "TIS", "NONE"];
-const POLS = ["Theta", "Phi", "Total"];
 
-function decodeBuffer(buf) {
-  const u8 = new Uint8Array(buf);
-  if (u8[0] === 0xFF && u8[1] === 0xFE) return new TextDecoder("utf-16le").decode(u8);
-  if (u8[0] === 0xFE && u8[1] === 0xFF) return new TextDecoder("utf-16be").decode(u8);
-  try { return new TextDecoder("utf-8", { fatal: true }).decode(u8); }
-  catch (e) { return new TextDecoder("iso-8859-1").decode(u8); }
+let BUCKETS = { rl: [], iso: [], tableData: [], pattern2d: [], trp: [], tis: [], unknown: [] };
+let EXPORT_ITEMS = [];
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, ch => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]));
 }
-function splitRows(text) {
-  return text.replace(/^\uFEFF/, "").split(/\r\n|\n|\r/).map(l => l.split(",").map(c => c.trim()));
+function stripExt(name) {
+  return name.replace(/\.(csv|emq|pat|txt)$/i, "").replace(/[\s_-]*TableData\s*$/i, "");
 }
-const isNum = s => s !== "" && s !== undefined && Number.isFinite(Number(s));
-
-function sparamStats(rows, hdrIdx) {
-  const hdr = rows[hdrIdx];
-  const find = re => hdr.findIndex(h => re.test(h));
-  const iS11 = find(/^S11\b/i), iS22 = find(/^S22\b/i);
-  let iT = find(/^S12\b/i); if (iT < 0) iT = find(/^S21\b/i);
-  const data = [];
-  for (let r = hdrIdx + 1; r < rows.length; r++) {
-    const c = rows[r];
-    if (!isNum(c[0])) { if (data.length) break; else continue; }
-    data.push(c.map(Number));
-  }
-  const med = data.map(d => d[0]).sort((a, b) => a - b)[Math.floor(data.length / 2)] || 0;
-  const toMHz = med > 1e6 ? 1e-6 : med > 1e3 ? 1 : 1000;
-  const sel = data.filter(d => d[0] * toMHz >= 300);           // skip < 300 MHz (fixture effects)
-  const col = i => (i < 0 ? null : sel.map(d => d[i]).filter(Number.isFinite));
-  const s22 = col(iS22), t = col(iT);
-  return {
-    nRows: data.length,
-    transName: iT >= 0 ? hdr[iT] : null,
-    hasS11: iS11 >= 0,
-    s22Min: s22 && s22.length ? Math.min(...s22) : null,
-    tMax: t && t.length ? Math.max(...t) : null,
-  };
+function nanmaxMat(mat) {
+  let m = -Infinity, any = false;
+  mat.forEach(row => row.forEach(v => { if (Number.isFinite(v)) { any = true; if (v > m) m = v; } }));
+  return any ? m : NaN;
 }
-
-function classifyText(text) {
-  const rows = splitRows(text);
-  const lines = text.replace(/^\uFEFF/, "").split(/\r\n|\n|\r/);
-  const out = (type, reason, extra) => Object.assign({ type, reason }, extra || {});
-
-  // --- Network-analyzer S-parameter CSV -------------------------------------
-  const hdrIdx = rows.findIndex(c => /^freq/i.test(c[0] || "") && c.slice(1).some(h => /^S\d\d\b/i.test(h)));
-  if (hdrIdx >= 0) {
-    const st = sparamStats(rows, hdrIdx);
-    if (st.nRows < 10) return out("NONE", "有 S 參數欄位標頭，但數值資料列不足");
-    if (!st.hasS11) return out("NONE", "S 參數 CSV 但沒有 S11 欄位");
-    const extra = { sparam: st };
-    if (st.tMax === null) return out("RL", "S 參數 CSV，只有反射係數（1-port）", extra);
-    const f1 = v => v.toFixed(1);
-    const s22Txt = st.s22Min === null ? "無 S22" : `S22 最低 ${f1(st.s22Min)} dB`;
-    const desc = `${st.transName.split(" ")[0]} 最高 ${f1(st.tMax)} dB、${s22Txt}`;
-    const port2Live = st.s22Min !== null && st.s22Min < -6;   // port 2 sees a resonating antenna
-    const port2Open = st.s22Min === null || st.s22Min > -3;   // port 2 open / unused
-    const coupled = st.tMax > -50;                            // real coupling, not the noise floor
-    if (coupled && (port2Live || st.s22Min === null)) return out("ISO", `兩埠都接天線（${desc}）`, extra);
-    if (!coupled && port2Open) return out("RL", `只有 Port 1 接天線（${desc}）`, extra);
-    return out("NONE", `S 參數 CSV，但分不出 RL 或 Isolation（${desc}），請手動指定`, Object.assign(extra, { ambiguous: true }));
-  }
-
-  // --- Touchstone ------------------------------------------------------------
-  if (lines.some(l => /^\s*#\s*(hz|khz|mhz|ghz)\s+[syz]\s+(ma|db|ri)\s+r\s+\d/i.test(l)))
-    return out("NONE", "Touchstone 格式；現有 RL / Isolation 工具只吃網分儀匯出的 CSV");
-
-  // --- Chamber exports ---------------------------------------------------------
-  const method = (lines.find(l => /Test Method:/i.test(l)) || "").replace(/.*Test Method:\s*/i, "").replace(/"/g, "").trim();
-  const has = pred => rows.some(pred);
-
-  const cutHdr = rows.filter(c => /^cut[123]$/i.test(c[0] || "") && /polarization/i.test(c[1] || ""));
-  if (cutHdr.length) {
-    const angleRows = has(c => /^angle/i.test(c[2] || "") && /power/i.test(c[3] || ""));
-    const freqHdr = has(c => c[0] === "" && POLS.includes(c[1]) && /frequency/i.test(c[2] || "") && isNum(c[3]));
-    if (angleRows && freqHdr) return out("CUT3", `${cutHdr.length} 個切面（Cut1–3），每個切面有角度 × 頻率資料`);
-    return out("NONE", "有 Cut 區塊，但缺少角度 / 頻率資料表");
-  }
-
-  if (/sensitivity/i.test(method)) {
-    const block = has(c => POLS.includes(c[0]) && /^phi angle/i.test(c[1] || "") && isNum(c[2]));
-    const thetaRow = has(c => c[0] === "" && /^theta angle/i.test(c[1] || ""));
-    const tisRow = has(c => c[1] === "TIS (dBm)" && isNum(c[2]));
-    if (block && thetaRow && tisRow) return out("TIS", "Sensitivity 量測，含 θ/φ 球面網格與 TIS (dBm)");
-    return out("NONE", "Sensitivity 量測，但缺少球面網格或 TIS 數值");
-  }
-
-  const totalBlock = has(c => POLS.includes(c[0]) && /^phi angle/i.test(c[1] || ""));
-  const respHdr = has(c => /^frequency/i.test(c[2] || "") && /^response/i.test(c[3] || ""));
-  const sumFreq = has(c => c[0] === "Total" && /^frequency/i.test(c[1] || "") && isNum(c[2]));
-  const effRow = has(c => /^efficiency \(%\)/i.test(c[1] || ""));
-  if (totalBlock && respHdr) {
-    if (sumFreq && effRow) return out("TOTAL", "多頻點全球面量測，含 Efficiency / Gain 摘要");
-    return out("NONE", "全球面量測，但缺少 Efficiency / Gain 摘要");
-  }
-
-  const trpBlock = has(c => POLS.includes(c[0]) && /^theta angle/i.test(c[1] || "") && isNum(c[2]));
-  const phiRow = has(c => c[0] === "" && /^phi angle/i.test(c[1] || "") && /power/i.test(c[2] || ""));
-  const trpRow = has(c => /^tot\. rad\. pwr\./i.test(c[1] || "") && isNum(c[2]));
-  if (trpBlock && phiRow && trpRow) return out("TRP", "單頻點全球面功率量測，含 Tot. Rad. Pwr.");
-  if (trpBlock || trpRow) return out("NONE", "像 TRP 檔，但缺少球面網格或 TRP 數值");
-
-  return out("NONE", "不符合任何已知格式");
+function nanminMat(mat) {
+  let m = Infinity, any = false;
+  mat.forEach(row => row.forEach(v => { if (Number.isFinite(v)) { any = true; if (v < m) m = v; } }));
+  return any ? m : NaN;
+}
+function nanmean(arr) {
+  let s = 0, c = 0;
+  for (const v of arr) if (Number.isFinite(v)) { s += v; c++; }
+  return c ? s / c : NaN;
+}
+function nansum(arr) {
+  let s = 0;
+  for (const v of arr) if (Number.isFinite(v)) s += v;
+  return s;
+}
+function nanmax(arr) {
+  let m = -Infinity, any = false;
+  for (const v of arr) if (Number.isFinite(v)) { any = true; if (v > m) m = v; }
+  return any ? m : NaN;
+}
+function nanmin(arr) {
+  let m = Infinity, any = false;
+  for (const v of arr) if (Number.isFinite(v)) { any = true; if (v < m) m = v; }
+  return any ? m : NaN;
 }
 
-// Frequencies (MHz) inside radiation files, used to pre-select bands
-function radiationFreqs(text, type) {
-  const rows = splitRows(text);
-  let r = null;
-  if (type === "TOTAL") r = rows.find(c => c[0] === "Total" && /^frequency/i.test(c[1] || ""));
-  if (type === "CUT3") { r = rows.find(c => c[0] === "" && POLS.includes(c[1]) && /frequency/i.test(c[2] || "")); if (r) r = r.slice(1); }
-  return r ? r.slice(2).filter(isNum).map(Number) : [];
-}
+// =========================================================================
+// 0. 完整保留原工具核心演算法 (TIS RBF, TRP Catmull-Rom, 2D CubicSpline)
+// =========================================================================
 
-// =====================================================================
-// 2. File list UI
-// =====================================================================
-let items = [];      // { id, file, text, result, chosen }
-let nextId = 1;
-const $ = id => document.getElementById(id);
-const esc = s => String(s).replace(/[&<>"]/g, ch => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[ch]));
-
-async function addFiles(fileList) {
-  for (const file of fileList) {
-    let text = "", result;
-    try {
-      text = decodeBuffer(await file.arrayBuffer());
-      result = classifyText(text);
-    } catch (e) {
-      result = { type: "NONE", reason: "讀取失敗：" + e.message };
+// --- TIS CORE (球面 Thin-Plate Spline RBF + 高斯暈染 + sinθ 加權 TIS) ---
+const TIS_CORE = (() => {
+  const FORMAT_NAME = { A: '格式 A(θ −180~180 × φ 0~180)', B: '格式 B(φ 0~360 × θ 0~180)' };
+  function parseCSV(text) {
+    const lines = text.replace(/\r\n?/g, '\n').split('\n');
+    const blocks = {};
+    let format = null;
+    for (const pol of ['Theta', 'Phi', 'Total']) {
+      const i = lines.findIndex(l => l.startsWith(pol + ',Phi Angle') || l.startsWith(pol + ',Theta Angle'));
+      if (i < 0) continue;
+      const colIsPhi = lines[i].startsWith(pol + ',Phi Angle');
+      format = colIsPhi ? 'A' : 'B';
+      const cols = lines[i].split(',').slice(2).filter(s => s.trim() !== '').map(Number);
+      const pts = [];
+      for (let k = i + 2; k < lines.length; k++) {
+        const c = lines[k].split(',');
+        if (c.length < 3 || c[1].trim() === '' || isNaN(+c[1])) break;
+        const rowAng = +c[1];
+        cols.forEach((colAng, j) => {
+          const s = c[2 + j];
+          if (s === undefined || s.trim() === '' || isNaN(+s)) return;
+          pts.push(colIsPhi ? { t: rowAng, p: colAng, v: +s } : { t: colAng, p: rowAng, v: +s });
+        });
+      }
+      blocks[pol] = { pts };
     }
-    items.push({ id: nextId++, file, text, result, chosen: result.type });
-  }
-  renderList();
-}
-
-function renderList() {
-  $("list-card").hidden = items.length === 0;
-  const counts = {};
-  items.forEach(it => { counts[it.chosen] = (counts[it.chosen] || 0) + 1; });
-  $("chips").innerHTML = TYPE_ORDER.filter(t => counts[t]).map(t =>
-    `<span class="chip${t === "NONE" ? " bad" : ""}">${esc(TYPE_LABELS[t])}<b>${counts[t]}</b></span>`).join("");
-
-  $("file-rows").innerHTML = items.map(it => {
-    const opts = TYPE_ORDER.map(t => `<option value="${t}"${t === it.chosen ? " selected" : ""}>${esc(TYPE_LABELS[t])}</option>`).join("");
-    const changed = it.chosen !== it.result.type;
-    const cls = [it.chosen === "NONE" ? "none" : "", it.result.ambiguous && it.chosen === "NONE" ? "ambiguous" : ""].join(" ");
-    const reason = changed ? `已手動改為 ${TYPE_LABELS[it.chosen]}（原判斷：${it.result.reason}）` : it.result.reason;
-    return `<tr class="${cls}">
-      <td class="fname">${esc(it.file.name)}</td>
-      <td><select data-id="${it.id}" aria-label="分類">${opts}</select></td>
-      <td class="reason">${esc(reason)}</td>
-      <td><button class="rm" data-rm="${it.id}" title="移除" aria-label="移除 ${esc(it.file.name)}">×</button></td>
-    </tr>`;
-  }).join("");
-
-  $("file-rows").querySelectorAll("select").forEach(sel => sel.addEventListener("change", () => {
-    items.find(it => it.id === +sel.dataset.id).chosen = sel.value;
-    renderList();
-  }));
-  $("file-rows").querySelectorAll("[data-rm]").forEach(btn => btn.addEventListener("click", () => {
-    items = items.filter(it => it.id !== +btn.dataset.rm);
-    renderList();
-  }));
-  $("run-btn").disabled = !items.some(it => it.chosen !== "NONE");
-}
-
-const fileInput = $("file-input"), drop = $("drop");
-fileInput.addEventListener("change", () => { addFiles(Array.from(fileInput.files)); fileInput.value = ""; });
-["dragenter", "dragover"].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add("over"); }));
-["dragleave", "drop"].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove("over"); }));
-drop.addEventListener("drop", e => addFiles(Array.from(e.dataTransfer.files)));
-$("clear-btn").addEventListener("click", () => {
-  items = []; renderList();
-  $("results").hidden = true; $("tabs").innerHTML = ""; $("panels").innerHTML = ""; $("run-msg").innerHTML = "";
-});
-
-// =====================================================================
-// 3. Driving the existing tool pages inside same-origin iframes
-// =====================================================================
-const sleep = ms => new Promise(r => setTimeout(r, ms));
-async function waitFor(fn, what, ms = 60000) {
-  const t0 = Date.now();
-  while (Date.now() - t0 < ms) {
-    const v = fn();
-    if (v) return v;
-    await sleep(120);
-  }
-  throw new Error(`等待「${what}」逾時`);
-}
-function frameCtx(iframe) {
-  let doc = null;
-  try { doc = iframe.contentDocument; } catch (e) { doc = null; }
-  if (!doc || !doc.body) {
-    const err = new Error("SAME_ORIGIN");
-    err.sameOrigin = true;
-    throw err;
-  }
-  const win = iframe.contentWindow;
-  return { win, doc, $: id => doc.getElementById(id) };
-}
-function setFiles(c, input, files) {
-  const dt = new c.win.DataTransfer();
-  files.forEach(f => dt.items.add(f));
-  input.files = dt.files;
-  input.dispatchEvent(new c.win.Event("change", { bubbles: true }));
-}
-function setValue(el, v) {
-  el.value = v;
-  el.dispatchEvent(new el.ownerDocument.defaultView.Event("input", { bubbles: true }));
-  el.dispatchEvent(new el.ownerDocument.defaultView.Event("change", { bubbles: true }));
-}
-function check(el, on) { if (el && el.checked !== on) el.click(); }
-function boxResult(box) {
-  if (!box) return null;
-  const e = box.querySelector(".msg.error");
-  if (e) throw new Error(e.textContent.replace(/^\s*❌\s*/, "").trim());
-  return box.querySelector(".msg");
-}
-// Some browsers fire a late "load" for the iframe's initial about:blank page.
-// Only accept the load once the iframe really shows the tool page and its DOM is complete.
-function loadToolPage(iframe, page) {
-  return new Promise((res, rej) => {
-    const timer = setTimeout(() => rej(new Error(`${page} 載入逾時`)), 60000);
-    const done = () => { clearTimeout(timer); clearInterval(poll); iframe.removeEventListener("load", check); res(); };
-    function check() {
-      let href = "", ready = "";
-      try {
-        href = iframe.contentWindow.location.href;
-        ready = iframe.contentDocument && iframe.contentDocument.readyState;
-      } catch (e) { return done(); }            // cross-origin: let frameCtx report it
-      if (href.split(/[?#]/)[0].endsWith("/" + page) && ready === "complete") done();
+    const meta = {};
+    for (const l of lines) {
+      const c = l.split(',').map(s => s.trim());
+      const k = c.lastIndexOf('TIS (dBm)');
+      if (k >= 0 && c[k + 1] !== undefined && c[k + 1] !== '' && !isNaN(+c[k + 1])) { meta.tis = +c[k + 1]; break; }
     }
-    iframe.addEventListener("load", check);
-    const poll = setInterval(check, 200);
-    iframe.src = page;
-  });
-}
-async function needPlotly(c) {
-  try { await waitFor(() => c.win.Plotly, "Plotly", 15000); }
-  catch (e) { throw new Error("Plotly 繪圖元件沒有載入（請確認網路可以連到 CDN 後重新整理）"); }
-}
-const ghz = mhz => String(parseFloat((mhz / 1000).toFixed(6)));
-
-// Band tables copied from the individual tools
-const RL_BANDS = { 1: [2400, 2500], 2: [5150, 5850], 3: [5925, 7125], 5: [617, 960], 6: [1710, 2700], 7: [3300, 4200] };
-const EFF_BANDS = [[2400, 2500], [5150, 5850], [5925, 7125], [617, 960], [1710, 2690], [3300, 5000]];
-
-function matchBands(freqs, bandList) {
-  return bandList.filter(([, [s, e]]) => freqs.some(f => f >= s && f <= e)).map(([k]) => k);
-}
-
-// ---- RL / ISO (rl-vswr-isolation.html) ----
-async function runSparam(c, files, ctx, mode) {
-  await needPlotly(c);
-  const radio = c.doc.querySelector(`input[name="mode"][value="${mode}"]`);
-  radio.click();
-  const notes = [];
-  if (ctx.radFreqs.length) {
-    const codes = matchBands(ctx.radFreqs, Object.entries(RL_BANDS)).map(Number);
-    if (codes.length) {
-      const s = Math.min(...codes.map(k => RL_BANDS[k][0])), e = Math.max(...codes.map(k => RL_BANDS[k][1]));
-      setValue(c.$("fstart"), ghz(s)); setValue(c.$("fend"), ghz(e));
-      notes.push(`頻率範圍依 TOTAL / 3CUT 頻點設為 ${ghz(s)}–${ghz(e)} GHz`);
+    return { blocks, meta, format, formatName: format ? FORMAT_NAME[format] : '' };
+  }
+  function toSphere(block) {
+    const map = new Map();
+    for (const q of block.pts) {
+      let t = q.t, ph = q.p;
+      if (t < 0) { t = -t; ph = ph + 180; }
+      ph = ((ph % 360) + 360) % 360;
+      if (t === 0 || t === 180) ph = 0;
+      const key = t + '_' + ph;
+      if (!map.has(key)) map.set(key, { t, p: ph, s: 0, n: 0 });
+      const e = map.get(key); e.s += q.v; e.n++;
     }
+    return [...map.values()].map(e => ({ t: e.t, p: e.p, v: e.s / e.n }));
   }
-  if (mode === "iso") {
-    const trans = (ctx.items.find(it => it.result.sparam && it.result.sparam.transName) || {}).result;
-    const name = trans && trans.sparam.transName;
-    if (name) {
-      const sel = c.$("iso-col-select");
-      if (Array.from(sel.options).some(o => o.value === name)) setValue(sel, name);
-      else { setValue(sel, "__custom__"); setValue(c.$("iso-col-custom"), name.replace(/\(.*$/, "").trim()); }
-      notes.push(`Isolation 欄位：${name}`);
-    }
-  }
-  setFiles(c, c.$("file-input"), files);
-  c.$("run-btn").click();
-  await waitFor(() => c.$("msg-box").querySelector(".msg"), "分析完成");
-  boxResult(c.$("msg-box"));
-  return notes;
-}
-
-// ---- Efficiency & Peak Gain (efficiency-gain.html) ----
-async function runEff(c, files, ctx) {
-  await needPlotly(c);
-  c.doc.querySelector('input[name="source"][value="original"]').click();
-  const idx = matchBands(ctx.radFreqs, EFF_BANDS.map((b, i) => [i, b]));
-  const notes = [];
-  if (idx.length) {
-    idx.forEach(i => check(c.doc.querySelector(`#band-checks input[value="${i}"]`), true));
-    notes.push("頻段依檔案頻點自動勾選");
-  } else if (ctx.radFreqs.length) {
-    setValue(c.$("manual-start-0"), ghz(Math.min(...ctx.radFreqs) - 10));
-    setValue(c.$("manual-end-0"), ghz(Math.max(...ctx.radFreqs) + 10));
-    notes.push("檔案頻點不在預設頻段內，已填入手動頻段");
-  }
-  setFiles(c, c.$("file-input"), files);
-  c.$("run-btn").click();
-  await waitFor(() => c.$("msg-box").querySelector(".msg"), "產生圖表");
-  boxResult(c.$("msg-box"));
-  return notes;
-}
-
-// ---- 2D Pattern (pattern-2d.html) ----
-async function runPattern(c, files) {
-  await needPlotly(c);
-  setFiles(c, c.$("file-input"), files);
-  c.$("load-btn").click();
-  await waitFor(() => !c.$("config-section").hidden || c.$("load-msg-box").querySelector(".msg.error"), "載入檔案");
-  if (c.$("config-section").hidden) boxResult(c.$("load-msg-box"));
-  c.$("draw-btn").click();
-  await waitFor(() => c.$("msg-box").querySelector(".msg"), "繪製 2D Pattern");
-  boxResult(c.$("msg-box"));
-  return [`頻率先畫 ${c.$("freq-select").value} MHz，可在下方切換`];
-}
-
-// ---- Heatmap / Homogenous / MIMO (heatmap.html) ----
-async function runHeatmap(c, files) {
-  await needPlotly(c);
-  if (!c.win.ExcelJS) throw new Error("ExcelJS 元件沒有載入（請確認網路可以連到 CDN 後重新整理）");
-  const notes = [];
-  setFiles(c, c.$("csv-input"), files);
-  c.$("build-db-btn").click();
-  await waitFor(() => !c.$("tab2-filters").hidden || c.$("db-msg-box").querySelector(".msg.error"), "產生 Database");
-  boxResult(c.$("db-msg-box"));
-
-  ["filter-ants", "filter-pols", "filter-freqs"].forEach(id =>
-    c.$(id).querySelectorAll("input[type=checkbox]").forEach(cb => check(cb, true)));
-  c.$("build-analysis-btn").click();
-  await waitFor(() => c.$("analysis-msg-box").querySelector(".msg"), "產生 Analysis / Comcast Excel");
-  boxResult(c.$("analysis-msg-box"));
-
-  // ④ first, while its tab is visible, so Plotly gets real sizes
-  const tabBtn = t => c.doc.querySelector(`.tab-btn[data-tab="${t}"]`);
-  if (!c.$("tab4-controls").hidden) {
-    tabBtn("tab4").click();
-    for (const [btn, box, label] of [["gen-homo-btn", "homo-results", "Homogenous"], ["gen-mimo-btn", "mimo-results", "MIMO"]]) {
-      c.$(btn).click();
-      await waitFor(() => c.$(box).children.length, label);
-      if (c.$(box).querySelector(".msg.error")) notes.push(`${label}：${c.$(box).textContent.replace("❌", "").trim()}`);
-    }
-  } else {
-    notes.push("沒有 Total 極化資料，略過 Homogenous / MIMO");
-  }
-
-  // ③ heatmap
-  tabBtn("tab3").click();
-  c.$("hm-ants").querySelectorAll("input[type=checkbox]").forEach(cb => check(cb, true));
-  const pol = c.$("hm-pol");
-  if (Array.from(pol.options).some(o => o.value === "Total")) setValue(pol, "Total");
-  c.$("gen-heatmap-btn").click();
-  await waitFor(() => c.$("heatmap-msg-box").querySelector(".msg"), "產生 Heatmap");
-  boxResult(c.$("heatmap-msg-box"));
-  notes.unshift(`Heatmap 先畫 ${c.$("hm-freq").value} MHz（Total），③ / ④ 分頁可切換頻率重畫`);
-  return notes;
-}
-
-// ---- TRP Heatmap (trpheatmap.html) ----
-async function runTrp(c, files) {
-  setFiles(c, c.$("csv-input"), files);
-  await waitFor(() => c.$("file-table-box").innerHTML.trim() || c.$("load-msg-box").querySelector(".msg.error"), "讀取 TRP CSV");
-  boxResult(c.$("load-msg-box"));
-  c.$("gen-heatmap-btn").click();
-  await waitFor(() => c.$("heatmap-msg-box").querySelector(".msg"), "產生 Heatmap");
-  boxResult(c.$("heatmap-msg-box"));
-  return [];
-}
-
-// ---- TIS Heatmap (tisheatmap.html) ----
-async function runTis(c, files) {
-  setFiles(c, c.$("file"), files);
-  await waitFor(() => !c.$("cv").hidden || !c.$("err").hidden, "讀取 TIS CSV");
-  if (!c.$("err").hidden && c.$("cv").hidden) throw new Error(c.$("err").textContent);
-  return files.length > 1 ? ["多個檔案時，Heatmap 一次顯示一個，可在左側清單切換"] : [];
-}
-
-const TOOLS = [
-  { key: "rl",      type: "RL",    title: "Return Loss / VSWR",   page: "rl-vswr-isolation.html", run: (c, f, x) => runSparam(c, f, x, "rl_vswr"), probe: "run-btn" },
-  { key: "iso",     type: "ISO",   title: "Isolation",            page: "rl-vswr-isolation.html", run: (c, f, x) => runSparam(c, f, x, "iso"), probe: "run-btn" },
-  { key: "eff",     type: "TOTAL", title: "Efficiency & Gain",    page: "efficiency-gain.html",   run: runEff, probe: "run-btn" },
-  { key: "heatmap", type: "TOTAL", title: "Heatmap / MIMO",       page: "heatmap.html",           run: runHeatmap, probe: "build-db-btn" },
-  { key: "pattern", type: "CUT3",  title: "2D Pattern",           page: "pattern-2d.html",        run: runPattern, probe: "load-btn" },
-  { key: "trp",     type: "TRP",   title: "TRP Heatmap",          page: "trpheatmap.html",        run: runTrp, probe: "gen-heatmap-btn" },
-  { key: "tis",     type: "TIS",   title: "TIS Heatmap",          page: "tisheatmap.html",        run: runTis, probe: "cv" },
-];
-
-const FRAME_CSS = `
-  .top-nav > a[href*="index"], a.back { display: none !important; }
-  .wrap { padding-top: 14px !important; }
-  h1 { margin-top: 0 !important; }
-`;
-
-function selectTab(key) {
-  document.querySelectorAll(".tab").forEach(t => t.setAttribute("aria-selected", t.dataset.key === key));
-  document.querySelectorAll(".panel").forEach(p => p.classList.toggle("active", p.dataset.key === key));
-}
-
-// Keep every iframe as tall as its content (no inner scrollbars)
-let resizeTimer = null;
-function startAutoResize() {
-  if (resizeTimer) clearInterval(resizeTimer);
-  resizeTimer = setInterval(() => {
-    document.querySelectorAll(".panel iframe").forEach(f => {
-      try {
-        const d = f.contentDocument;
-        if (!d || !d.body) return;
-        const h = Math.max(d.documentElement.scrollHeight, d.body.scrollHeight);
-        if (h && Math.abs(h - f.offsetHeight) > 4) f.style.height = h + "px";
-      } catch (e) { /* cross-origin: leave as is */ }
-    });
-  }, 400);
-}
-
-let running = false;
-$("run-btn").addEventListener("click", async () => {
-  if (running) return;
-  if (!/^https?:$/.test(location.protocol)) {
-    $("run-msg").innerHTML = `<div class="msg error">這個頁面需要從 GitHub Pages 網址開啟（例如 https://arcadyanantenna.github.io/reporttools/all-in-one.html）。在預覽視窗或直接開啟本機檔案時，找不到其他工具頁，無法自動分析。檔案辨認仍可在這裡先確認。</div>`;
-    return;
-  }
-  running = true;
-  $("run-btn").disabled = true;
-  $("run-msg").innerHTML = "";
-  $("tabs").innerHTML = ""; $("panels").innerHTML = "";
-
-  const active = items.filter(it => it.chosen !== "NONE");
-  const byType = t => active.filter(it => it.chosen === t);
-  const radFreqs = Array.from(new Set(
-    active.filter(it => it.chosen === "TOTAL" || it.chosen === "CUT3").flatMap(it => radiationFreqs(it.text, it.chosen))
-  )).sort((a, b) => a - b);
-
-  const jobs = TOOLS.filter(t => byType(t.type).length).map(tool => {
-    const its = byType(tool.type);
-    const tab = document.createElement("button");
-    tab.className = "tab"; tab.dataset.key = tool.key; tab.setAttribute("role", "tab");
-    tab.innerHTML = `<span class="dot run"></span>${esc(tool.title)}<span style="color:var(--muted);font-weight:400;">${its.length}</span>`;
-    tab.addEventListener("click", () => selectTab(tool.key));
-    $("tabs").appendChild(tab);
-
-    const panel = document.createElement("div");
-    panel.className = "panel"; panel.dataset.key = tool.key; panel.setAttribute("role", "tabpanel");
-    panel.innerHTML = `<div class="panel-status"><span class="st">執行中…</span><a href="${tool.page}" target="_blank" rel="noopener">在新分頁開啟原工具 ↗</a></div><iframe title="${esc(tool.title)}"></iframe>`;
-    $("panels").appendChild(panel);
-    return { tool, its, tab, panel };
-  });
-
-  $("results").hidden = false;
-  if (jobs.length) selectTab(jobs[0].tool.key);
-  startAutoResize();
-
-  let sameOriginFail = false;
-  await Promise.all(jobs.map(async ({ tool, its, tab, panel }) => {
-    const iframe = panel.querySelector("iframe");
-    const st = panel.querySelector(".st");
-    const dot = tab.querySelector(".dot");
-    try {
-      await loadToolPage(iframe, tool.page);
-      const c = frameCtx(iframe);
-      if (!c.$(tool.probe)) throw new Error(`找不到 ${tool.page}（請確認它和 all-in-one.html 在同一個資料夾，且檔名完全相同）`);
-      const style = c.doc.createElement("style");
-      style.textContent = FRAME_CSS;
-      c.doc.head.appendChild(style);
-      const notes = await tool.run(c, its.map(it => it.file), { items: its, radFreqs });
-      st.textContent = `已自動執行（${its.length} 個檔案）` + (notes.length ? "。" + notes.join("；") : "") + "。設定可以直接在下方修改後重跑。";
-      dot.className = "dot ok";
-    } catch (err) {
-      dot.className = "dot err";
-      if (err.sameOrigin) {
-        sameOriginFail = true;
-        st.innerHTML = `<span class="err">無法控制此工具頁（需與 all-in-one.html 放在同一個網站資料夾）</span>`;
-      } else {
-        st.innerHTML = `<span class="err">自動執行停在這一步：${esc(err.message)}</span>，可以在下方手動完成`;
+  const D2R = Math.PI / 180;
+  const xyz = (t, p) => [Math.sin(t * D2R) * Math.cos(p * D2R), Math.sin(t * D2R) * Math.sin(p * D2R), Math.cos(t * D2R)];
+  function solve(A, b) {
+    const n = b.length;
+    for (let c = 0; c < n; c++) {
+      let piv = c;
+      for (let r = c + 1; r < n; r++) if (Math.abs(A[r][c]) > Math.abs(A[piv][c])) piv = r;
+      [A[c], A[piv]] = [A[piv], A[c]]; [b[c], b[piv]] = [b[piv], b[c]];
+      for (let r = c + 1; r < n; r++) {
+        const f = A[r][c] / A[c][c];
+        if (!f) continue;
+        for (let k = c; k < n; k++) A[r][k] -= f * A[c][k];
+        b[r] -= f * b[c];
       }
     }
-  }));
-
-  const nOk = jobs.filter(j => j.tab.querySelector(".dot.ok")).length;
-  if (sameOriginFail) {
-    $("run-msg").innerHTML = `<div class="msg error">這個頁面要放在 GitHub Pages（與其他工具同一個資料夾）上使用。直接用瀏覽器開啟本機 HTML 檔時，瀏覽器會擋住頁面之間的存取。</div>`;
-  } else {
-    $("run-msg").innerHTML = `<div class="msg ${nOk === jobs.length ? "success" : "error"}">完成 ${nOk} / ${jobs.length} 項分析，結果在下方分頁。</div>`;
+    const x = new Array(n).fill(0);
+    for (let r = n - 1; r >= 0; r--) {
+      let s = b[r];
+      for (let k = r + 1; k < n; k++) s -= A[r][k] * x[k];
+      x[r] = s / A[r][r];
+    }
+    return x;
   }
-  running = false;
-  renderList();
+  const tps = r2 => r2 > 0 ? 0.5 * r2 * Math.log(r2) : 0;
+  function buildRBF(pts) {
+    const X = pts.map(q => xyz(q.t, q.p)), n = X.length, m = n + 4;
+    const A = Array.from({ length: m }, () => new Array(m).fill(0)), b = new Array(m).fill(0);
+    for (let i = 0; i < n; i++) {
+      for (let j = 0; j < n; j++) {
+        const d = 2 - 2 * (X[i][0] * X[j][0] + X[i][1] * X[j][1] + X[i][2] * X[j][2]);
+        A[i][j] = tps(Math.max(d, 0));
+      }
+      const P = [1, X[i][0], X[i][1], X[i][2]];
+      for (let k = 0; k < 4; k++) { A[i][n + k] = P[k]; A[n + k][i] = P[k]; }
+      b[i] = pts[i].v;
+    }
+    const w = solve(A, b);
+    const W = new Float64Array(w.slice(0, n)), c = w.slice(n);
+    const Xf = new Float64Array(n * 3); X.forEach((v, i) => Xf.set(v, i * 3));
+    return function (x, y, z) {
+      let s = c[0] + c[1] * x + c[2] * y + c[3] * z;
+      for (let i = 0; i < n; i++) {
+        const d = 2 - 2 * (x * Xf[3 * i] + y * Xf[3 * i + 1] + z * Xf[3 * i + 2]);
+        if (d > 0) s += W[i] * 0.5 * d * Math.log(d);
+      }
+      return s;
+    };
+  }
+  function grid(f, thetas, phis) {
+    const out = new Float64Array(thetas.length * phis.length);
+    const cp = phis.map(p => Math.cos(p * D2R)), sp = phis.map(p => Math.sin(p * D2R));
+    thetas.forEach((t, i) => {
+      const st = Math.sin(t * D2R), ct = Math.cos(t * D2R);
+      for (let j = 0; j < phis.length; j++) out[i * phis.length + j] = f(st * cp[j], st * sp[j], ct);
+    });
+    return out;
+  }
+  function tis(vals, thetas, nphi, sel) {
+    let num = 0, den = 0;
+    thetas.forEach((t, i) => {
+      const w = Math.sin(t * D2R);
+      for (let j = 0; j < nphi; j++) if (!sel || sel(i, j)) { num += Math.pow(10, vals[i * nphi + j] / 10) * w; den += w; }
+    });
+    return -10 * Math.log10(num / den);
+  }
+  function blur(src, nth, nph, sigmaT, sigmaP) {
+    const kern = s => {
+      if (s <= 0) return [1];
+      const r = Math.ceil(3 * s), k = [];
+      let sum = 0;
+      for (let i = -r; i <= r; i++) { const v = Math.exp(-i * i / (2 * s * s)); k.push(v); sum += v; }
+      return k.map(v => v / sum);
+    };
+    const kp = kern(sigmaP), kt = kern(sigmaT), rp = (kp.length - 1) / 2, rt = (kt.length - 1) / 2;
+    const per = nph - 1, tmp = new Float64Array(src.length), out = new Float64Array(src.length);
+    for (let i = 0; i < nth; i++) for (let j = 0; j < per; j++) {
+      let s = 0;
+      for (let k = -rp; k <= rp; k++) s += kp[k + rp] * src[i * nph + (((j + k) % per) + per) % per];
+      tmp[i * nph + j] = s;
+    }
+    for (let i = 0; i < nth; i++) tmp[i * nph + per] = tmp[i * nph];
+    for (let i = 0; i < nth; i++) for (let j = 0; j < nph; j++) {
+      let s = 0;
+      for (let k = -rt; k <= rt; k++) s += kt[k + rt] * tmp[Math.min(nth - 1, Math.max(0, i + k)) * nph + j];
+      out[i * nph + j] = s;
+    }
+    return out;
+  }
+  return { parseCSV, toSphere, buildRBF, grid, tis, blur };
+})();
+
+// --- Catmull-Rom bicubic + 高斯暈染 (供 TRP 與 3D Heatmap) ---
+function cr(p0, p1, p2, p3, t) {
+  return 0.5 * (2 * p1 + (-p0 + p2) * t + (2 * p0 - 5 * p1 + 4 * p2 - p3) * t * t + (-p0 + 3 * p1 - 3 * p2 + p3) * t * t * t);
+}
+function upsample15DegTo1Deg(mat) {
+  const TH_ANGLES = Array.from({ length: 13 }, (_, i) => i * 15);
+  const PH_ANGLES = Array.from({ length: 25 }, (_, i) => i * 15);
+  const FINE_TH = Array.from({ length: 181 }, (_, i) => i);
+  const FINE_PH = Array.from({ length: 361 }, (_, i) => i);
+  const nT = 13, nP = 24;
+  const g = (ti, pi) => mat[Math.min(Math.max(ti, 0), nT - 1)][((pi % nP) + nP) % nP];
+  const z = FINE_TH.map(t => {
+    const ft = t / 15, t0 = Math.min(Math.floor(ft), nT - 2), dt = ft - t0;
+    return FINE_PH.map(p => {
+      const fp = p / 15, p0 = Math.min(Math.floor(fp), nP), dp = fp - p0;
+      const corners = [g(t0, p0), g(t0, p0 + 1), g(t0 + 1, p0), g(t0 + 1, p0 + 1)];
+      if (corners.some(v => !Number.isFinite(v))) return g(Math.round(ft), Math.round(fp));
+      const rows = [-1, 0, 1, 2].map(k => cr(g(t0 + k, p0 - 1), g(t0 + k, p0), g(t0 + k, p0 + 1), g(t0 + k, p0 + 2), dp));
+      let v = cr(rows[0], rows[1], rows[2], rows[3], dt);
+      if (!Number.isFinite(v)) return g(Math.round(ft), Math.round(fp));
+      return Math.min(Math.max(v, Math.min(...corners)), Math.max(...corners));
+    });
+  });
+  const custom = FINE_TH.map(t => {
+    const ti = Math.round(t / 15);
+    return FINE_PH.map(p => { const pi = Math.round(p / 15); return [PH_ANGLES[pi], TH_ANGLES[ti], mat[ti][pi]]; });
+  });
+  return { x: FINE_PH, y: FINE_TH, z, custom };
+}
+function blur2D(z, sigma) {
+  if (!(sigma > 0)) return z;
+  const r = Math.ceil(3 * sigma), k = [];
+  let sum = 0;
+  for (let i = -r; i <= r; i++) { const v = Math.exp(-i * i / (2 * sigma * sigma)); k.push(v); sum += v; }
+  for (let i = 0; i < k.length; i++) k[i] /= sum;
+  const nT = z.length, nP = z[0].length, per = nP - 1;
+  const tmp = z.map(row => {
+    const out = new Array(nP);
+    for (let j = 0; j < per; j++) {
+      let s = 0;
+      for (let m = -r; m <= r; m++) s += k[m + r] * row[(((j + m) % per) + per) % per];
+      out[j] = s;
+    }
+    out[per] = out[0];
+    return out;
+  });
+  return tmp.map((row, i) => row.map((_, j) => {
+    let s = 0;
+    for (let m = -r; m <= r; m++) s += k[m + r] * tmp[Math.min(nT - 1, Math.max(0, i + m))][j];
+    return s;
+  }));
+}
+
+// --- Not-a-knot Cubic Spline (供 2D Pattern) ---
+function cubicSplineNotAKnot(x, y) {
+  const n = x.length - 1;
+  const h = [];
+  for (let i = 0; i < n; i++) h.push(x[i + 1] - x[i]);
+  const A = Array.from({ length: n + 1 }, () => new Array(n + 1).fill(0));
+  const B = new Array(n + 1).fill(0);
+  A[0][0] = h[1]; A[0][1] = -(h[0] + h[1]); A[0][2] = h[0]; B[0] = 0;
+  for (let i = 1; i < n; i++) {
+    A[i][i - 1] = h[i - 1]; A[i][i] = 2 * (h[i - 1] + h[i]); A[i][i + 1] = h[i];
+    B[i] = 3 * ((y[i + 1] - y[i]) / h[i] - (y[i] - y[i - 1]) / h[i - 1]);
+  }
+  A[n][n - 2] = h[n - 1]; A[n][n - 1] = -(h[n - 2] + h[n - 1]); A[n][n] = h[n - 2]; B[n] = 0;
+  const M = A.map(r => r.slice()), bVec = B.slice(), sz = bVec.length;
+  for (let col = 0; col < sz; col++) {
+    let piv = col, maxVal = Math.abs(M[col][col]);
+    for (let r = col + 1; r < sz; r++) if (Math.abs(M[r][col]) > maxVal) { maxVal = Math.abs(M[r][col]); piv = r; }
+    [M[col], M[piv]] = [M[piv], M[col]]; [bVec[col], bVec[piv]] = [bVec[piv], bVec[col]];
+    for (let r = col + 1; r < sz; r++) {
+      const f = M[r][col] / M[col][col];
+      if (!f) continue;
+      for (let c = col; c < sz; c++) M[r][c] -= f * M[col][c];
+      bVec[r] -= f * bVec[col];
+    }
+  }
+  const c = new Array(sz).fill(0);
+  for (let r = sz - 1; r >= 0; r--) {
+    let s = bVec[r];
+    for (let col = r + 1; col < sz; col++) s -= M[r][col] * c[col];
+    c[r] = s / M[r][r];
+  }
+  const b = new Array(n), d = new Array(n);
+  for (let i = 0; i < n; i++) {
+    b[i] = (y[i + 1] - y[i]) / h[i] - h[i] * (2 * c[i] + c[i + 1]) / 3;
+    d[i] = (c[i + 1] - c[i]) / (3 * h[i]);
+  }
+  return xq => {
+    if (xq <= x[0]) { const dx = xq - x[0]; return y[0] + b[0] * dx + c[0] * dx * dx + d[0] * dx * dx * dx; }
+    if (xq >= x[n]) { const dx = xq - x[n - 1]; return y[n - 1] + b[n - 1] * dx + c[n - 1] * dx * dx + d[n - 1] * dx * dx * dx; }
+    let lo = 0, hi = n - 1;
+    while (lo < hi) { const mid = (lo + hi + 1) >> 1; if (x[mid] <= xq) lo = mid; else hi = mid - 1; }
+    const dx = xq - x[lo];
+    return y[lo] + b[lo] * dx + c[lo] * dx * dx + d[lo] * dx * dx * dx;
+  };
+}
+function interpolate2DTo1Deg(anglesDeg, values) {
+  const anglesMod = anglesDeg.map(a => ((a % 360) + 360) % 360);
+  const groups = new Map();
+  anglesMod.forEach((a, i) => { if (!groups.has(a)) groups.set(a, []); groups.get(a).push(values[i]); });
+  const uAng = Array.from(groups.keys()).sort((a, b) => a - b);
+  const uVal = uAng.map(a => nanmean(groups.get(a)));
+  const newAngles = Array.from({ length: 360 }, (_, i) => i);
+  if (uAng.length < 4) return { angles: uAng, values: uVal };
+  const last3 = uAng.slice(-3).map(a => a - 360), first3 = uAng.slice(0, 3).map(a => a + 360);
+  let angExt = last3.concat(uAng, first3);
+  const valExt = uVal.slice(-3).concat(uVal, uVal.slice(0, 3));
+  for (let i = 1; i < angExt.length; i++) if (angExt[i] <= angExt[i - 1]) angExt[i] = angExt[i - 1] + 1e-9;
+  const sp = cubicSplineNotAKnot(angExt, valExt);
+  return { angles: newAngles, values: newAngles.map(a => sp(a)) };
+}
+
+// =========================================================================
+// 1. UI 切換與檔案讀取
+// =========================================================================
+document.querySelectorAll(".tab-btn").forEach(btn => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
+    document.querySelectorAll(".tab-panel").forEach(p => p.classList.remove("active"));
+    btn.classList.add("active");
+    document.getElementById(btn.dataset.target).classList.add("active");
+    window.dispatchEvent(new Event("resize"));
+  });
 });
+
+const dropZone = document.getElementById("drop-zone");
+const fileInput = document.getElementById("file-input");
+const dirInput = document.getElementById("dir-input");
+document.getElementById("pick-files-btn").onclick = () => fileInput.click();
+document.getElementById("pick-dir-btn").onclick = () => dirInput.click();
+fileInput.onchange = e => handleFiles(e.target.files);
+dirInput.onchange = e => handleFiles(e.target.files);
+
+["dragenter", "dragover"].forEach(ev => dropZone.addEventListener(ev, e => { e.preventDefault(); dropZone.classList.add("over"); }));
+["dragleave", "drop"].forEach(ev => dropZone.addEventListener(ev, e => { e.preventDefault(); dropZone.classList.remove("over"); }));
+dropZone.addEventListener("drop", async e => {
+  const items = e.dataTransfer.items;
+  if (items && items[0] && items[0].webkitGetAsEntry) {
+    const files = [];
+    async function scanEntry(entry) {
+      if (entry.isFile) files.push(await new Promise(res => entry.file(res)));
+      else if (entry.isDirectory) {
+        const reader = entry.createReader();
+        const entries = await new Promise(res => reader.readEntries(res));
+        for (const ent of entries) await scanEntry(ent);
+      }
+    }
+    for (const item of items) { const ent = item.webkitGetAsEntry(); if (ent) await scanEntry(ent); }
+    handleFiles(files);
+  } else {
+    handleFiles(e.dataTransfer.files);
+  }
+});
+
+function readText(file) {
+  return new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload = () => res(r.result);
+    r.onerror = () => rej(r.error);
+    r.readAsText(file, "ISO-8859-1");
+  });
+}
+
+// =========================================================================
+// 2. 自動指紋辨識與分流器
+// =========================================================================
+async function handleFiles(fileList) {
+  const files = Array.from(fileList).filter(f => /\.(csv|emq)$/i.test(f.name));
+  if (!files.length) return;
+
+  BUCKETS = { rl: [], iso: [], tableData: [], pattern2d: [], trp: [], tis: [], unknown: [] };
+
+  for (const file of files) {
+    const text = await readText(file);
+    const lines = text.split(/\r\n|\n|\r/);
+    const head = lines.slice(0, 60).join("\n");
+    const nameLower = file.name.toLowerCase();
+
+    if (text.includes("TIS (dBm)") && /^(Total|Theta|Phi),(Phi|Theta) Angle/m.test(head)) {
+      BUCKETS.tis.push({ file, text, name: stripExt(file.name) });
+    } else if (text.includes("Tot. Rad. Pwr. (dBm)") || text.includes("Peak EIRP (dBm)")) {
+      BUCKETS.trp.push({ file, text, name: stripExt(file.name) });
+    } else if (nameLower.endsWith(".emq") || (/cut1/i.test(text) && /cut2/i.test(text)) || (lines[0] && lines[0].includes("Plane,Freq(MHz),Angle(deg)"))) {
+      BUCKETS.pattern2d.push({ file, text, name: stripExt(file.name) });
+    } else if (text.includes("Efficiency (%)") && (text.includes("Gain (dBi)") || text.includes("Directivity (dBi)"))) {
+      BUCKETS.tableData.push({ file, text, name: stripExt(file.name) });
+    } else {
+      const freqLine = lines.slice(0, 30).find(l => l.toLowerCase().includes("freq") && l.includes(","));
+      if (freqLine) {
+        const fl = freqLine.toLowerCase();
+        if (fl.includes("s12") || fl.includes("s21") || /iso|s12|s21/i.test(nameLower)) {
+          BUCKETS.iso.push({ file, text, name: stripExt(file.name) });
+        } else {
+          BUCKETS.rl.push({ file, text, name: stripExt(file.name) });
+        }
+      } else {
+        BUCKETS.unknown.push(file.name);
+      }
+    }
+  }
+
+  const cards = [
+    { label: "01 RL / VSWR", list: BUCKETS.rl },
+    { label: "01 Isolation", list: BUCKETS.iso },
+    { label: "02 & 04 TableData (Eff/3D)", list: BUCKETS.tableData },
+    { label: "03 2D Pattern (3cut)", list: BUCKETS.pattern2d },
+    { label: "05 TRP CSV", list: BUCKETS.trp },
+    { label: "06 TIS CSV", list: BUCKETS.tis },
+  ];
+  document.getElementById("summary-cards").innerHTML = cards.map(c => `
+    <div class="stat-box">
+      <div class="title">${c.label}</div>
+      <div class="num">${c.list.length} <span style="font-size:13px;font-weight:400;color:var(--muted)">個檔</span></div>
+      <div class="files-preview">${escapeHtml(c.list.map(x => x.name).join(", ") || "—")}</div>
+    </div>
+  `).join("");
+
+  document.getElementById("unknown-msg").innerHTML = BUCKETS.unknown.length
+    ? `<div class="msg warn">⚠️ 略過 ${BUCKETS.unknown.length} 個非天線量測格式檔案：${escapeHtml(BUCKETS.unknown.join("、"))}</div>`
+    : `<div class="msg ok">✅ 共 ${files.length} 個檔案已全數精準辨識並自動繪製完成！</div>`;
+
+  document.getElementById("detect-summary").hidden = false;
+  document.getElementById("settings-card").hidden = false;
+  document.getElementById("output-section").hidden = false;
+
+  await renderAllModules();
+}
+
+document.getElementById("render-all-btn").onclick = renderAllModules;
+
+function createPlotlyCard(gridEl, title, folder, pngName, traces, layout, isHeatmap = false) {
+  const box = document.createElement("div");
+  box.className = "chart-box";
+  const plotId = "plot_" + Math.random().toString(36).slice(2, 9);
+  box.innerHTML = `<div class="${isHeatmap ? "hm-area" : "plot-area"}" id="${plotId}"></div>
+    <div class="chart-footer"><span>${escapeHtml(title)}</span><button class="dl-mini">⬇️ ${escapeHtml(pngName)}</button></div>`;
+  gridEl.appendChild(box);
+
+  Plotly.newPlot(plotId, traces, layout, { responsive: true, displaylogo: false });
+
+  const w = isHeatmap ? 1260 : 1200, h = isHeatmap ? 640 : 560;
+  const getBlob = async () => {
+    const url = await Plotly.toImage(plotId, { format: "png", width: w, height: h, scale: 2 });
+    return await (await fetch(url)).blob();
+  };
+  box.querySelector(".dl-mini").onclick = async () => {
+    const blob = await getBlob();
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob); a.download = pngName; a.click();
+  };
+  EXPORT_ITEMS.push({ folder, filename: pngName, getBlob });
+}
+
+// =========================================================================
+// 3. 總調度：依序執行 6 大模組繪圖
+// =========================================================================
+async function renderAllModules() {
+  EXPORT_ITEMS = [];
+  ["grid-rl", "grid-eff", "grid-2d", "grid-hm", "grid-trp", "grid-tis"].forEach(id => document.getElementById(id).innerHTML = "");
+  document.getElementById("tbl-trp").innerHTML = "";
+  document.getElementById("tbl-tis").innerHTML = "";
+
+  const selBands = Array.from(document.querySelectorAll("#global-bands input:checked")).map(el => BAND_DEFS[el.value]);
+  const pol = document.getElementById("cfg-pol").value;
+  const soft = +document.getElementById("cfg-soft").value || 0;
+  const rlSpec = parseFloat(document.getElementById("cfg-rl-spec").value);
+  const ylim2d = [parseFloat(document.getElementById("cfg-2d-min").value) || -40, parseFloat(document.getElementById("cfg-2d-max").value) || 5];
+  const homoA = parseFloat(document.getElementById("cfg-homo-a").value) || 6;
+  const mimoA = parseFloat(document.getElementById("cfg-mimo-a").value) || 3;
+
+  renderModule01_SParam(selBands, rlSpec);
+  renderModule02_EffGain(selBands);
+  renderModule03_2DPattern(ylim2d);
+  renderModule04_3DHeatmap(pol, homoA, mimoA);
+  renderModule05_TRP(pol, soft);
+  renderModule06_TIS(pol, soft);
+
+  document.getElementById("zip-all-btn").disabled = EXPORT_ITEMS.length === 0;
+}
+
+// =========================================================================
+// 模組 01：Return Loss / VSWR / Isolation
+// =========================================================================
+function parseVnaCsv(text, keyword) {
+  const lines = text.split(/\r\n|\n|\r/);
+  let hIdx = lines.findIndex(l => l.toLowerCase().includes("freq") && l.includes(","));
+  if (hIdx < 0) return null;
+  const headers = lines[hIdx].split(",").map(s => s.trim());
+  const fIdx = headers.findIndex(h => h.toLowerCase().includes("freq"));
+  let dIdx = keyword ? headers.findIndex(h => h.toLowerCase().includes(keyword.toLowerCase())) : -1;
+  if (dIdx < 0) dIdx = headers.findIndex((_, i) => i !== fIdx);
+  const pts = [];
+  for (let i = hIdx + 1; i < lines.length; i++) {
+    const c = lines[i].split(",");
+    const f = parseFloat(c[fIdx]), v = parseFloat(c[dIdx]);
+    if (Number.isFinite(f) && Number.isFinite(v)) pts.push({ f, v });
+  }
+  if (!pts.length) return null;
+  const med = pts[Math.floor(pts.length / 2)].f;
+  const scale = med > 1e6 ? 1e-9 : (med > 1e3 ? 1e-3 : 1);
+  return pts.map(p => ({ f: p.f * scale, v: p.v }));
+}
+
+function renderModule01_SParam(selBands, rlSpec) {
+  const grid = document.getElementById("grid-rl");
+  let count = 0;
+  const shapes = selBands.map(([s, e], i) => ({
+    type: "rect", xref: "x", yref: "paper", x0: s / 1000, x1: e / 1000, y0: 0, y1: 1,
+    fillcolor: COLORS[i % COLORS.length], opacity: 0.18, line: { width: 0 }, layer: "below"
+  }));
+  const xRange = selBands.length
+    ? [Math.min(...selBands.map(b => b[0])) / 1000 - 0.1, Math.max(...selBands.map(b => b[1])) / 1000 + 0.1]
+    : undefined;
+
+  if (BUCKETS.rl.length) {
+    const rlTraces = [], vswrTraces = [];
+    BUCKETS.rl.forEach((item, idx) => {
+      const pts = parseVnaCsv(item.text, "s11") || parseVnaCsv(item.text, null);
+      if (!pts) return;
+      const color = COLORS[idx % COLORS.length];
+      rlTraces.push({ x: pts.map(p => p.f), y: pts.map(p => p.v), name: item.name, mode: "lines", line: { color, width: 1.8 } });
+      vswrTraces.push({
+        x: pts.map(p => p.f),
+        y: pts.map(p => { const m = Math.pow(10, p.v / 20); return (1 + m) / (1 - m); }),
+        name: item.name, mode: "lines", line: { color, width: 1.8 }
+      });
+    });
+    const rlShapes = [...shapes];
+    if (Number.isFinite(rlSpec)) {
+      selBands.forEach(([s, e]) => rlShapes.push({ type: "line", x0: s / 1000, x1: e / 1000, y0: rlSpec, y1: rlSpec, line: { color: "red", dash: "dash", width: 2 } }));
+    }
+    createPlotlyCard(grid, "Return Loss (dB)", "01_S_Param", "s11.png", rlTraces, {
+      title: { text: "Return Loss", font: { size: 18 } },
+      xaxis: { title: "Frequency (GHz)", range: xRange, gridcolor: "rgba(0,0,0,0.15)", showline: true, mirror: true },
+      yaxis: { title: "Return Loss (dB)", gridcolor: "rgba(0,0,0,0.15)", showline: true, mirror: true },
+      shapes: rlShapes, legend: { orientation: "h", y: -0.18 }, paper_bgcolor: "#fff", plot_bgcolor: "#fff", font: { color: "#1a1a1a" }
+    });
+    createPlotlyCard(grid, "VSWR", "01_S_Param", "vswr.png", vswrTraces, {
+      title: { text: "VSWR", font: { size: 18 } },
+      xaxis: { title: "Frequency (GHz)", range: xRange, gridcolor: "rgba(0,0,0,0.15)", showline: true, mirror: true },
+      yaxis: { title: "VSWR", range: [1, 6], dtick: 1, gridcolor: "rgba(0,0,0,0.15)", showline: true, mirror: true },
+      shapes, legend: { orientation: "h", y: -0.18 }, paper_bgcolor: "#fff", plot_bgcolor: "#fff", font: { color: "#1a1a1a" }
+    });
+    count += 2;
+  }
+
+  if (BUCKETS.iso.length) {
+    const isoTraces = [];
+    BUCKETS.iso.forEach((item, idx) => {
+      const pts = parseVnaCsv(item.text, "s12") || parseVnaCsv(item.text, "s21") || parseVnaCsv(item.text, null);
+      if (!pts) return;
+      isoTraces.push({ x: pts.map(p => p.f), y: pts.map(p => p.v), name: item.name, mode: "lines", line: { color: COLORS[idx % COLORS.length], width: 1.8 } });
+    });
+    createPlotlyCard(grid, "Isolation (dB)", "01_S_Param", "iso.png", isoTraces, {
+      title: { text: "Isolation", font: { size: 18 } },
+      xaxis: { title: "Frequency (GHz)", range: xRange, gridcolor: "rgba(0,0,0,0.15)", showline: true, mirror: true },
+      yaxis: { title: "Isolation (dB)", gridcolor: "rgba(0,0,0,0.15)", showline: true, mirror: true },
+      shapes, legend: { orientation: "h", y: -0.18 }, paper_bgcolor: "#fff", plot_bgcolor: "#fff", font: { color: "#1a1a1a" }
+    });
+    count++;
+  }
+  document.getElementById("cnt-rl").textContent = count;
+}
+
+// =========================================================================
+// 模組 02：Efficiency & Peak Gain (從 TableData.csv 擷取)
+// =========================================================================
+function parseEtsEfficiency(text) {
+  const lines = text.split(/\r\n|\n|\r/);
+  let fIdx = -1, eIdx = -1, gIdx = -1;
+  lines.forEach((l, i) => {
+    const c = l.split(",");
+    if (c.length > 1) {
+      const cell = c[1].trim().toLowerCase();
+      if (cell.includes("frequency") && fIdx < 0) fIdx = i;
+      else if (cell.includes("efficiency (%)") && eIdx < 0) eIdx = i;
+      else if (cell.includes("gain") && !cell.includes("average") && !cell.includes("directivity") && gIdx < 0) gIdx = i;
+    }
+  });
+  if (fIdx < 0 || eIdx < 0 || gIdx < 0) return null;
+  const getNums = i => lines[i].split(",").slice(2).map(Number).filter(Number.isFinite);
+  const f = getNums(fIdx), eff = getNums(eIdx), gain = getNums(gIdx);
+  const n = Math.min(f.length, eff.length, gain.length);
+  return { f: f.slice(0, n), eff: eff.slice(0, n), gain: gain.slice(0, n) };
+}
+
+function renderModule02_EffGain(selBands) {
+  const grid = document.getElementById("grid-eff");
+  if (!BUCKETS.tableData.length) { document.getElementById("cnt-eff").textContent = 0; return; }
+
+  const series = BUCKETS.tableData.map(item => ({ name: item.name, ...parseEtsEfficiency(item.text) })).filter(d => d.f);
+  const segments = selBands.length ? selBands : [[600, 7200]];
+  let count = 0;
+
+  segments.forEach(([s, e]) => {
+    const effTraces = [], gainTraces = [];
+    series.forEach((ser, si) => {
+      const color = COLORS[si % COLORS.length];
+      const pts = ser.f.map((f, idx) => ({ f, eff: ser.eff[idx], gain: ser.gain[idx] })).filter(p => p.f >= s && p.f <= e).sort((a, b) => a.f - b.f);
+      if (!pts.length) return;
+      const xs = pts.map(p => p.f / 1000);
+      effTraces.push({ x: xs, y: pts.map(p => p.eff), name: ser.name, mode: "lines+markers", line: { color, width: 1.5 }, marker: { size: 5 } });
+      gainTraces.push({ x: xs, y: pts.map(p => p.gain), name: ser.name, mode: "lines+markers", line: { color, width: 1.5 }, marker: { size: 5 } });
+    });
+    if (!effTraces.length) return;
+
+    const xrange = [(s - 10) / 1000, (e + 10) / 1000];
+    createPlotlyCard(grid, `Efficiency (%) — ${s}-${e} MHz`, "02_Eff_Gain", `efficiency_${s}-${e}MHz.png`, effTraces, {
+      title: { text: `Efficiency (${s}-${e} MHz)`, font: { size: 16 } },
+      xaxis: { title: "Frequency (GHz)", range: xrange, gridcolor: "rgba(0,0,0,0.15)", showline: true, mirror: true },
+      yaxis: { title: "Efficiency (%)", range: [0, 100], dtick: 10, gridcolor: "rgba(0,0,0,0.15)", showline: true, mirror: true },
+      legend: { orientation: "h", y: -0.2 }, paper_bgcolor: "#fff", plot_bgcolor: "#fff", font: { color: "#1a1a1a" }
+    });
+    createPlotlyCard(grid, `Peak Gain (dBi) — ${s}-${e} MHz`, "02_Eff_Gain", `peak_gain_${s}-${e}MHz.png`, gainTraces, {
+      title: { text: `Peak Gain (${s}-${e} MHz)`, font: { size: 16 } },
+      xaxis: { title: "Frequency (GHz)", range: xrange, gridcolor: "rgba(0,0,0,0.15)", showline: true, mirror: true },
+      yaxis: { title: "Peak Gain (dBi)", range: [-3, 10], gridcolor: "rgba(0,0,0,0.15)", showline: true, mirror: true },
+      legend: { orientation: "h", y: -0.2 }, paper_bgcolor: "#fff", plot_bgcolor: "#fff", font: { color: "#1a1a1a" }
+    });
+    count += 2;
+  });
+  document.getElementById("cnt-eff").textContent = count;
+}
+
+// =========================================================================
+// 模組 03：2D Pattern (XY / ZX / ZY 並排極座標圖 + 1° Spline 內插 + Corr/Uncorr)
+// =========================================================================
+function parse3Cut(text, name) {
+  const lines = text.split(/\r\n|\n|\r/).map(l => l.split(","));
+  const planes = {};
+  const kw = { XY: "cut1", ZX: "cut2", ZY: "cut3" };
+  for (const [p, k] of Object.entries(kw)) {
+    const ci = lines.findIndex(r => r[0] && r[0].toLowerCase().includes(k));
+    if (ci < 0) continue;
+    const ti = lines.findIndex((r, idx) => idx > ci && r[1] && r[1].toLowerCase().includes("total"));
+    if (ti < 0) continue;
+    const freqs = lines[ti].slice(3).map(s => s.trim()).filter(Boolean);
+    const angles = [], vals = {};
+    freqs.forEach(f => vals[f] = []);
+    for (let r = ti + 1; r < lines.length; r++) {
+      if (!lines[r][2] || !lines[r][2].trim()) break;
+      const a = parseFloat(lines[r][2]);
+      if (!Number.isFinite(a)) continue;
+      angles.push(a);
+      freqs.forEach((f, j) => vals[f].push(parseFloat(lines[r][3 + j])));
+    }
+    planes[p] = { freqs, angles, vals };
+  }
+  return Object.keys(planes).length ? { name, planes } : null;
+}
+
+function renderModule03_2DPattern(ylim) {
+  const grid = document.getElementById("grid-2d");
+  const parsed = BUCKETS.pattern2d.map(f => parse3Cut(f.text, f.name)).filter(Boolean);
+  if (!parsed.length) { document.getElementById("cnt-2d").textContent = 0; return; }
+
+  const freqs = parsed[0].planes.XY?.freqs || Object.values(parsed[0].planes)[0]?.freqs || [];
+  let count = 0;
+
+  freqs.forEach(freq => {
+    const box = document.createElement("div");
+    box.className = "chart-box";
+    const row = document.createElement("div");
+    row.className = "pattern-row";
+    box.appendChild(row);
+
+    const divIds = [];
+    const legendItems = [];
+    const seenNames = new Set();
+
+    ["XY", "ZX", "ZY"].forEach((plane, pi) => {
+      const divId = `pat2d_${freq}_${pi}_${Math.random().toString(36).slice(2, 6)}`;
+      divIds.push(divId);
+      const itemDiv = document.createElement("div");
+      itemDiv.className = "pattern-item";
+      itemDiv.innerHTML = `<div class="polar-div" id="${divId}"></div>`;
+      row.appendChild(itemDiv);
+
+      const traces = [];
+      const interpSeries = [];
+      let fineAng = null;
+
+      parsed.forEach((ant, ai) => {
+        const pObj = ant.planes[plane];
+        if (!pObj || !pObj.vals[freq]) return;
+        const { angles, values } = interpolate2DTo1Deg(pObj.angles, pObj.vals[freq]);
+        fineAng = angles;
+        interpSeries.push(values);
+        const color = COLORS[ai % COLORS.length];
+        traces.push({
+          type: "scatterpolar", mode: "lines",
+          theta: [...angles, angles[0]], r: [...values, values[0]],
+          name: ant.name, line: { color, width: 2 }
+        });
+        if (!seenNames.has(ant.name)) { seenNames.add(ant.name); legendItems.push({ name: ant.name, color, dashed: false }); }
+      });
+
+      if (interpSeries.length >= 2 && fineAng) {
+        const uncor = fineAng.map((_, a) => 10 * Math.log10(nanmean(interpSeries.map(r => Math.pow(10, r[a] / 10)))));
+        const corr = fineAng.map((_, a) => {
+          const s = nansum(interpSeries.map(r => Math.pow(10, r[a] / 20)));
+          return 10 * Math.log10((s * s) / interpSeries.length);
+        });
+        traces.push({ type: "scatterpolar", mode: "lines", theta: [...fineAng, fineAng[0]], r: [...uncor, uncor[0]], name: "Un-Corr", line: { color: "#444444", width: 2, dash: "dash" } });
+        traces.push({ type: "scatterpolar", mode: "lines", theta: [...fineAng, fineAng[0]], r: [...corr, corr[0]], name: "Corr", line: { color: "#996600", width: 2, dash: "dash" } });
+        if (!seenNames.has("Un-Corr")) { seenNames.add("Un-Corr"); legendItems.push({ name: "Un-Corr", color: "#444444", dashed: true }); }
+        if (!seenNames.has("Corr")) { seenNames.add("Corr"); legendItems.push({ name: "Corr", color: "#996600", dashed: true }); }
+      }
+
+      const radialTicks = Array.from({ length: 10 }, (_, k) => ylim[0] + (ylim[1] - ylim[0]) * k / 9);
+      Plotly.newPlot(divId, traces, {
+        paper_bgcolor: "#fff", plot_bgcolor: "#fff", font: { color: "#1a1a1a" }, showlegend: false,
+        margin: { l: 30, r: 30, t: 32, b: 20 }, width: 380, height: 400,
+        title: { text: `${freq} MHz ${plane} Plane`, font: { size: 13 } },
+        polar: {
+          bgcolor: "#fff",
+          angularaxis: { rotation: 90, direction: "clockwise", tickvals: Array.from({ length: 24 }, (_, k) => k * 15), tickfont: { size: 9 } },
+          radialaxis: { range: ylim, tickvals: radialTicks, ticktext: radialTicks.map(v => v.toFixed(0)), tickfont: { size: 8 }, angle: 90 }
+        }
+      }, { displaylogo: false });
+    });
+
+    const leg = document.createElement("div");
+    leg.className = "pattern-legend";
+    leg.innerHTML = legendItems.map(it => `<span class="item"><span class="swatch${it.dashed ? " dashed" : ""}" style="border-color:${it.color};"></span>${escapeHtml(it.name)}</span>`).join("");
+    box.appendChild(leg);
+
+    const pngName = `2D_pattern_${freq}MHz.png`;
+    const footer = document.createElement("div");
+    footer.className = "chart-footer";
+    footer.innerHTML = `<span>2D Pattern — ${freq} MHz (XY / ZX / ZY)</span><button class="dl-mini">⬇️ ${pngName}</button>`;
+    box.appendChild(footer);
+    grid.appendChild(box);
+
+    const getBlob = async () => {
+      const scale = 2;
+      const shots = [];
+      for (const id of divIds) {
+        const url = await Plotly.toImage(id, { format: "png", width: 380, height: 400, scale });
+        const img = await new Promise(res => { const im = new Image(); im.onload = () => res(im); im.src = url; });
+        shots.push(img);
+      }
+      const cv = document.createElement("canvas");
+      cv.width = 380 * 3 * scale; cv.height = 440 * scale;
+      const ctx = cv.getContext("2d");
+      ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, cv.width, cv.height);
+      shots.forEach((im, idx) => ctx.drawImage(im, idx * 380 * scale, 0, 380 * scale, 400 * scale));
+      return await new Promise(res => cv.toBlob(res, "image/png"));
+    };
+    footer.querySelector(".dl-mini").onclick = async () => {
+      const blob = await getBlob();
+      const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = pngName; a.click();
+    };
+    EXPORT_ITEMS.push({ folder: "03_2D_Pattern", filename: pngName, getBlob });
+    count++;
+  });
+  document.getElementById("cnt-2d").textContent = count;
+}
+
+// =========================================================================
+// 模組 04：3D Comcast Heatmap + Homogenous / MIMO Hitmap
+// =========================================================================
+function parseEts3D(text, antName) {
+  const lines = text.split(/\r\n|\n|\r/);
+  const records = [];
+  let pol = null, phi = null;
+  for (let i = 6; i < lines.length; i++) {
+    const p = lines[i].trim().split(",");
+    if (p.length < 3) continue;
+    const p0 = p[0].toLowerCase();
+    if (p0.includes("theta")) { pol = "Theta"; phi = null; continue; }
+    if (p0.includes("phi")) { pol = "Phi"; phi = null; continue; }
+    if (p0.includes("total")) { pol = "Total"; phi = null; continue; }
+    const cand = [p[0].trim(), p[1].trim()].find(s => /^\d+$/.test(s) && +s >= 0 && +s <= 180 && +s % 15 === 0);
+    if (cand !== undefined) { phi = +cand; continue; }
+    if (pol && phi !== null) {
+      const freq = parseFloat(p[2]);
+      if (!Number.isFinite(freq)) continue;
+      const vals = p.slice(3, 28).map(v => parseFloat(v));
+      if (vals.length === 25) records.push({ ant: antName, pol, phi, freq, vals });
+    }
+  }
+  return records;
+}
+
+function renderModule04_3DHeatmap(targetPol, homoA, mimoA) {
+  const grid = document.getElementById("grid-hm");
+  const allRecs = BUCKETS.tableData.flatMap(f => parseEts3D(f.text, f.name));
+  if (!allRecs.length) { document.getElementById("cnt-hm").textContent = 0; return; }
+
+  const freqs = Array.from(new Set(allRecs.map(r => r.freq))).sort((a, b) => a - b);
+  const ants = Array.from(new Set(allRecs.map(r => r.ant)));
+  const COM_TH = Array.from({ length: 13 }, (_, i) => i * 15);
+  const COM_PH = Array.from({ length: 25 }, (_, i) => i * 15);
+  let count = 0;
+
+  freqs.forEach(freq => {
+    const antMats = [];
+    ants.forEach(ant => {
+      const sub = allRecs.filter(r => r.ant === ant && r.pol === targetPol && r.freq === freq);
+      if (sub.length < 13) return;
+      const mat = COM_TH.map(() => new Array(25).fill(NaN));
+      sub.forEach(r => {
+        const pi = r.phi / 15, piBack = ((r.phi + 180) % 360) / 15;
+        for (let k = 12; k < 25; k++) mat[k - 12][pi] = r.vals[k];
+        for (let k = 0; k <= 12; k++) mat[12 - k][piBack] = r.vals[k];
+      });
+      mat.forEach(row => row[24] = row[0]);
+      antMats.push({ ant, mat });
+
+      const fine = upsample15DegTo1Deg(mat);
+      createPlotlyCard(grid, `${ant} - ${targetPol} - ${freq} MHz (Comcast)`, "04_3D_Heatmap", `${ant}_${targetPol}_${freq}MHz_Comcast.png`, [{
+        type: "heatmap", z: fine.z, x: fine.x, y: fine.y, customdata: fine.custom,
+        hovertemplate: "Phi = %{customdata[0]}°<br>Theta = %{customdata[1]}°<br>%{customdata[2]:.2f}<extra></extra>",
+        colorscale: "Jet", zsmooth: "best"
+      }], {
+        title: { text: `${ant} - ${targetPol} - ${freq} MHz`, font: { size: 14 } },
+        xaxis: { title: "Phi Angle (deg)", dtick: 15, tickangle: 90, range: [0, 360] },
+        yaxis: { title: "Theta Angle (deg)", dtick: 15, range: [180, 0] },
+        paper_bgcolor: "#fff", plot_bgcolor: "#fff", font: { color: "#1a1a1a" }
+      }, true);
+      count++;
+    });
+
+    if (antMats.length >= 2) {
+      const nAnt = antMats.length;
+      const uncorr = COM_TH.map((_, ti) => COM_PH.map((_, pi) => {
+        const s = antMats.reduce((acc, m) => acc + Math.pow(10, m.mat[ti][pi] / 10), 0);
+        return 10 * Math.log10(s / nAnt);
+      }));
+      const corr = COM_TH.map((_, ti) => COM_PH.map((_, pi) => {
+        const s = antMats.reduce((acc, m) => acc + Math.pow(10, m.mat[ti][pi] / 20), 0);
+        return 10 * Math.log10((s * s) / nAnt);
+      }));
+
+      [
+        { label: "Correlation", mat: corr },
+        { label: "Uncorrelation", mat: uncorr }
+      ].forEach(item => {
+        const fine = upsample15DegTo1Deg(item.mat);
+        createPlotlyCard(grid, `${item.label} - ${targetPol} - ${freq} MHz`, "04_3D_Heatmap", `${item.label}_${targetPol}_${freq}MHz_Comcast.png`, [{
+          type: "heatmap", z: fine.z, x: fine.x, y: fine.y, colorscale: "Jet", zsmooth: "best"
+        }], {
+          title: { text: `${item.label} - ${targetPol} - ${freq} MHz`, font: { size: 14 } },
+          xaxis: { title: "Phi Angle (deg)", dtick: 15, tickangle: 90, range: [0, 360] },
+          yaxis: { title: "Theta Angle (deg)", dtick: 15, range: [180, 0] },
+          paper_bgcolor: "#fff", plot_bgcolor: "#fff", font: { color: "#1a1a1a" }
+        }, true);
+        count++;
+      });
+
+      // Homogenous Hitmap (基於 Uncorr)
+      const M = nanmaxMat(uncorr), B = M - homoA;
+      let hitHomo = 0;
+      const maskHomo = uncorr.map(r => r.map(v => { const h = Number.isFinite(v) && v >= B; if (h) hitHomo++; return h ? 1 : 0; }));
+      const rateHomo = (hitHomo / 325) * 100;
+      createPlotlyCard(grid, `Homogenous @ ${freq}MHz (HitRate=${rateHomo.toFixed(1)}%)`, "04_3D_Heatmap", `Homogenous_HitRate_${freq}MHz_Max-${homoA}dB.png`, [{
+        type: "heatmap", z: maskHomo, x: COM_PH, y: COM_TH, zmin: 0, zmax: 1, colorscale: [[0, "#fff"], [1, "#ff0000"]], showscale: false
+      }], {
+        title: { text: `Homogenous @ ${freq}MHz, A=${homoA}dB → B=${B.toFixed(1)}dB (HitRate=${rateHomo.toFixed(1)}%)`, font: { size: 14 } },
+        xaxis: { title: "Phi Angle (deg)", dtick: 15, tickangle: 90 }, yaxis: { title: "Theta Angle (deg)", dtick: 15, range: [180, 0] },
+        paper_bgcolor: "#fff", plot_bgcolor: "#fff", font: { color: "#1a1a1a" }
+      }, true);
+      count++;
+
+      // MIMO Hitmap
+      let hitMimo = 0;
+      const maskMimo = COM_TH.map((_, r) => COM_PH.map((__, c) => {
+        const vals = antMats.map(m => m.mat[r][c]).sort((a, b) => a - b);
+        const hit = (vals[vals.length - 1] - vals[vals.length - 2]) <= mimoA;
+        if (hit) hitMimo++;
+        return hit ? 1 : 0;
+      }));
+      const rateMimo = (hitMimo / 325) * 100;
+      createPlotlyCard(grid, `MIMO @ ${freq}MHz (HitRate=${rateMimo.toFixed(1)}%)`, "04_3D_Heatmap", `MIMO_HitRate_${freq}MHz_Threshold_${mimoA}dB.png`, [{
+        type: "heatmap", z: maskMimo, x: COM_PH, y: COM_TH, zmin: 0, zmax: 1, colorscale: [[0, "#fff"], [1, "#ff0000"]], showscale: false
+      }], {
+        title: { text: `MIMO Heatmap @ ${freq}MHz, A=${mimoA}dB (HitRate=${rateMimo.toFixed(1)}%)`, font: { size: 14 } },
+        xaxis: { title: "Phi Angle (deg)", dtick: 15, tickangle: 90 }, yaxis: { title: "Theta Angle (deg)", dtick: 15, range: [180, 0] },
+        paper_bgcolor: "#fff", plot_bgcolor: "#fff", font: { color: "#1a1a1a" }
+      }, true);
+      count++;
+    }
+  });
+  document.getElementById("cnt-hm").textContent = count;
+}
+
+// =========================================================================
+// 模組 05：TRP Heatmap & Composite & 半球統計
+// =========================================================================
+function renderModule05_TRP(targetPol, soft) {
+  const grid = document.getElementById("grid-trp");
+  const tblBox = document.getElementById("tbl-trp");
+  if (!BUCKETS.trp.length) { document.getElementById("cnt-trp").textContent = 0; return; }
+
+  const TH = Array.from({ length: 13 }, (_, i) => i * 15);
+  const PH = Array.from({ length: 25 }, (_, i) => i * 15);
+  const datasets = [];
+
+  BUCKETS.trp.forEach(item => {
+    const lines = item.text.split(/\r\n|\n|\r/);
+    const mats = {};
+    for (const pol of ["Theta", "Phi", "Total"]) {
+      const i = lines.findIndex(l => l.startsWith(pol + ",") && /theta angle/i.test(l));
+      if (i < 0) continue;
+      const mat = TH.map(() => new Array(25).fill(NaN));
+      for (let j = i + 2; j < lines.length; j++) {
+        const r = lines[j].split(",");
+        const phi = parseFloat(r[1]);
+        if (!Number.isFinite(phi)) break;
+        const pi = Math.round(phi) / 15;
+        if (pi >= 0 && pi < 25) TH.forEach((_, ti) => mat[ti][pi] = parseFloat(r[2 + ti]));
+      }
+      mat.forEach(row => { if (!Number.isFinite(row[24])) row[24] = row[0]; });
+      mats[pol] = mat;
+    }
+    const fnM = item.text.match(/File Name:\s*([^\r\n"]+)/i);
+    const metaStr = fnM ? fnM[1] : item.name;
+    const chM = metaStr.match(/(?:^|[^A-Za-z])CH(?:ANNEL)?[_\s-]?(\d+)/i);
+    const antM = metaStr.match(/(?:^|[_\W])ANT[_\s-]?([A-Za-z0-9]+)/i);
+    const ch = chM ? `CH${chM[1]}` : "Default";
+    const ant = antM ? `ANT${antM[1]}` : item.name;
+    if (mats[targetPol]) datasets.push({ name: item.name, ch, ant, mat: mats[targetPol], total: mats.Total });
+  });
+
+  if (!datasets.length) { document.getElementById("cnt-trp").textContent = 0; return; }
+
+  const vmin = Math.min(...datasets.map(d => nanminMat(d.mat)));
+  const vmax = Math.max(...datasets.map(d => nanmaxMat(d.mat)));
+  const groups = new Map();
+  datasets.forEach(d => { if (!groups.has(d.ch)) groups.set(d.ch, []); groups.get(d.ch).push(d); });
+
+  let count = 0;
+  const statEntries = [];
+
+  groups.forEach((g, ch) => {
+    g.forEach(d => {
+      const up = upsample15DegTo1Deg(d.mat);
+      createPlotlyCard(grid, `${d.ant} (${ch}) - TRP ${targetPol}`, "05_TRP", `${d.ant}_${ch}_${targetPol}_TRP.png`, [{
+        type: "heatmap", z: blur2D(up.z, soft), x: up.x, y: up.y, customdata: up.custom,
+        hovertemplate: "Phi = %{customdata[0]}°<br>Theta = %{customdata[1]}°<br>%{customdata[2]:.2f} dBm<extra></extra>",
+        zmin: vmin, zmax: vmax, zsmooth: "best", colorscale: "Jet", colorbar: { tick0: 0, dtick: 2 }
+      }], {
+        title: { text: `${d.ant} - ${targetPol} (${ch})`, font: { size: 14 } },
+        xaxis: { title: "Phi Angle (deg)", dtick: 15, tickangle: 90, range: [0, 360] },
+        yaxis: { title: "Theta Angle (deg)", dtick: 15, range: [180, 0] },
+        paper_bgcolor: "#fff", plot_bgcolor: "#fff", font: { color: "#1a1a1a" }
+      }, true);
+      count++;
+      if (d.total) statEntries.push({ label: `${d.ant} / ${ch}`, mat: d.total, comp: false });
+    });
+
+    if (g.length >= 2) {
+      const comp = TH.map((_, ti) => PH.map((_, pi) => Math.max(...g.map(d => d.mat[ti][pi]))));
+      const up = upsample15DegTo1Deg(comp);
+      createPlotlyCard(grid, `Composite (${ch}) - TRP ${targetPol}`, "05_TRP", `Composite_${ch}_${targetPol}_TRP.png`, [{
+        type: "heatmap", z: blur2D(up.z, soft), x: up.x, y: up.y, zmin: vmin, zmax: vmax, zsmooth: "best", colorscale: "Jet", colorbar: { tick0: 0, dtick: 2 }
+      }], {
+        title: { text: `Composite - ${targetPol} (${ch})`, font: { size: 14 } },
+        xaxis: { title: "Phi Angle (deg)", dtick: 15, tickangle: 90, range: [0, 360] },
+        yaxis: { title: "Theta Angle (deg)", dtick: 15, range: [180, 0] },
+        paper_bgcolor: "#fff", plot_bgcolor: "#fff", font: { color: "#1a1a1a" }
+      }, true);
+      count++;
+      if (g.every(d => d.total)) {
+        const compTot = TH.map((_, ti) => PH.map((_, pi) => Math.max(...g.map(d => d.total[ti][pi]))));
+        statEntries.push({ label: `Composite / ${ch}`, mat: compTot, comp: true });
+      }
+    }
+  });
+
+  if (statEntries.length) {
+    const rows = statEntries.map(e => {
+      const up = [], dn = [], fr = [], bk = [], lt = [], rt = [];
+      TH.forEach((t, ti) => PH.forEach((p, pi) => {
+        if (p === 360 || !Number.isFinite(e.mat[ti][pi])) return;
+        const v = e.mat[ti][pi];
+        if (t <= 90) up.push(v); if (t >= 90) dn.push(v);
+        if (p <= 180) fr.push(v); if (p >= 180 || p === 0) bk.push(v);
+        if (p >= 270 || p <= 90) lt.push(v); if (p >= 90 && p <= 270) rt.push(v);
+      }));
+      const avg = a => (a.reduce((s, x) => s + x, 0) / a.length).toFixed(2);
+      return `<tr${e.comp ? ' class="comp"' : ""}><td>${escapeHtml(e.label)}</td><td>${avg(up)}</td><td>${avg(dn)}</td><td>${avg(fr)}</td><td>${avg(bk)}</td><td>${avg(lt)}</td><td>${avg(rt)}</td></tr>`;
+    }).join("");
+    tblBox.innerHTML = `<table class="stats"><thead><tr><th>天線 / 頻道</th><th>上半球 Avg</th><th>下半球 Avg</th><th>前半球 Avg</th><th>後半球 Avg</th><th>左半球 Avg</th><th>右半球 Avg</th></tr></thead><tbody>${rows}</tbody></table>`;
+  }
+  document.getElementById("cnt-trp").textContent = count;
+}
+
+// =========================================================================
+// 模組 06：TIS Heatmap (完全保留球面 RBF 內插 + 四象限 Avg TIS)
+// =========================================================================
+function renderModule06_TIS(targetPol, soft) {
+  const grid = document.getElementById("grid-tis");
+  const tblBox = document.getElementById("tbl-tis");
+  if (!BUCKETS.tis.length) { document.getElementById("cnt-tis").textContent = 0; return; }
+
+  const RES = 0.5;
+  const TH = Array.from({ length: 180 / RES + 1 }, (_, i) => i * RES);
+  const PH = Array.from({ length: 360 / RES + 1 }, (_, i) => i * RES);
+  const THc = Array.from({ length: 180 }, (_, i) => i + 0.5);
+  const PHc = Array.from({ length: 360 }, (_, i) => i + 0.5);
+  const jet = x => {
+    x = Math.min(1, Math.max(0, x));
+    const c = v => Math.round(255 * Math.min(1, Math.max(0, v)));
+    return [c(1.5 - Math.abs(4 * x - 3)), c(1.5 - Math.abs(4 * x - 2)), c(1.5 - Math.abs(4 * x - 1))];
+  };
+
+  let count = 0;
+  const statRows = [];
+
+  BUCKETS.tis.forEach(item => {
+    const parsed = TIS_CORE.parseCSV(item.text);
+    const block = parsed.blocks[targetPol];
+    if (!block || !block.pts.length) return;
+
+    const pts = TIS_CORE.toSphere(block);
+    const rbf = TIS_CORE.buildRBF(pts);
+    const field = TIS_CORE.grid(rbf, TH, PH);
+    const statField = TIS_CORE.grid(rbf, THc, PHc);
+    const nP = PHc.length;
+    const q = (t0, t1, p0, p1) => TIS_CORE.tis(statField, THc, nP, (i, j) => THc[i] > t0 && THc[i] < t1 && PHc[j] > p0 && PHc[j] < p1);
+    const tisAll = TIS_CORE.tis(statField, THc, nP);
+    const quads = [
+      { t: [0, 90], p: [0, 180], v: q(0, 90, 0, 180) },
+      { t: [0, 90], p: [180, 360], v: q(0, 90, 180, 360) },
+      { t: [90, 180], p: [0, 180], v: q(90, 180, 0, 180) },
+      { t: [90, 180], p: [180, 360], v: q(90, 180, 180, 360) },
+    ];
+
+    let mn = pts[0], mx = pts[0];
+    for (const p of pts) { if (p.v < mn.v) mn = p; if (p.v > mx.v) mx = p; }
+    const vmin = 86, vmax = 102;
+    const nth = TH.length, nph = PH.length;
+    const shown = soft > 0 ? TIS_CORE.blur(field, nth, nph, soft / RES, soft / RES) : field;
+
+    const off = document.createElement("canvas"); off.width = nph; off.height = nth;
+    const octx = off.getContext("2d"), img = octx.createImageData(nph, nth);
+    for (let k = 0; k < shown.length; k++) {
+      const [r, g, b] = jet((shown[k] - vmin) / (vmax - vmin));
+      img.data[4 * k] = r; img.data[4 * k + 1] = g; img.data[4 * k + 2] = b; img.data[4 * k + 3] = 255;
+    }
+    octx.putImageData(img, 0, 0);
+
+    const cv = document.createElement("canvas"); cv.width = 2520; cv.height = 1280;
+    const ctx = cv.getContext("2d"); ctx.setTransform(2, 0, 0, 2, 0, 0);
+    const W = 1260, H = 640, X0 = 92, Y0 = 72, PW = 1036, PHt = 508;
+    ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, W, H);
+    ctx.drawImage(off, X0, Y0, PW, PHt);
+    const xOf = p => X0 + p / 360 * PW, yOf = t => Y0 + t / 180 * PHt;
+    ctx.strokeStyle = "#000"; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(xOf(180), Y0); ctx.lineTo(xOf(180), Y0 + PHt); ctx.moveTo(X0, yOf(90)); ctx.lineTo(X0 + PW, yOf(90)); ctx.stroke();
+    ctx.strokeRect(X0, Y0, PW, PHt);
+
+    ctx.fillStyle = "#000"; ctx.font = "13px Arial, sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "top";
+    for (let p = 0; p <= 360; p += 30) ctx.fillText(p, xOf(p), Y0 + PHt + 8);
+    ctx.textAlign = "right"; ctx.textBaseline = "middle";
+    for (let t = 0; t <= 180; t += 30) ctx.fillText(t, X0 - 8, yOf(t));
+    ctx.font = "14px Arial, sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "alphabetic";
+    ctx.fillText(`${item.name}: TIS | ${targetPol}`, X0 + PW / 2, 30);
+    ctx.fillText(`Min=${mn.v.toFixed(2)} dBm @ Phi=${mn.p}°, Theta=${mn.t}° | Max=${mx.v.toFixed(2)} dBm`, X0 + PW / 2, 50);
+
+    const CX = X0 + PW + 14, CW = 38;
+    const grad = ctx.createLinearGradient(0, Y0 + PHt, 0, Y0);
+    for (let s = 0; s <= 20; s++) { const [r, g, b] = jet(s / 20); grad.addColorStop(s / 20, `rgb(${r},${g},${b})`); }
+    ctx.fillStyle = grad; ctx.fillRect(CX, Y0, CW, PHt); ctx.strokeRect(CX, Y0, CW, PHt);
+    ctx.fillStyle = "#000"; ctx.font = "13px Arial, sans-serif"; ctx.textAlign = "left"; ctx.textBaseline = "middle";
+    for (let v = vmin; v <= vmax; v += 2) ctx.fillText(v, CX + CW + 8, Y0 + PHt - (v - vmin) / (vmax - vmin) * PHt);
+
+    for (const qd of quads) {
+      const cx = xOf((qd.p[0] + qd.p[1]) / 2), cy = yOf((qd.t[0] + qd.t[1]) / 2);
+      const [r, g, b] = jet((-qd.v - vmin) / (vmax - vmin)).map(c => Math.round(255 - (255 - c) * 0.3));
+      ctx.fillStyle = `rgb(${r},${g},${b})`; ctx.fillRect(cx - 48, cy - 20, 96, 40); ctx.strokeStyle = "#555"; ctx.strokeRect(cx - 48, cy - 20, 96, 40);
+      ctx.fillStyle = "#000"; ctx.font = "bold 13px Arial, sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+      ctx.fillText("Avg TIS", cx, cy - 9); ctx.fillText(qd.v.toFixed(2) + " dBm", cx, cy + 9);
+    }
+
+    const box = document.createElement("div"); box.className = "chart-box";
+    box.appendChild(cv);
+    const pngName = `${item.name}_TIS_${targetPol}_heatmap.png`;
+    const footer = document.createElement("div"); footer.className = "chart-footer";
+    footer.innerHTML = `<span>${escapeHtml(item.name)} — TIS (${targetPol})</span><button class="dl-mini">⬇️ ${escapeHtml(pngName)}</button>`;
+    box.appendChild(footer); grid.appendChild(box);
+
+    const getBlob = () => new Promise(res => cv.toBlob(res, "image/png"));
+    footer.querySelector(".dl-mini").onclick = async () => {
+      const b = await getBlob(); const a = document.createElement("a"); a.href = URL.createObjectURL(b); a.download = pngName; a.click();
+    };
+    EXPORT_ITEMS.push({ folder: "06_TIS", filename: pngName, getBlob });
+    count++;
+
+    const tFile = parsed.meta.tis;
+    statRows.push(`<tr><td>${escapeHtml(item.name)}</td><td>${tFile === undefined ? "–" : tFile.toFixed(2)}</td><td>${tisAll.toFixed(2)}</td>${quads.map(qd => `<td>${qd.v.toFixed(2)}</td>`).join("")}</tr>`);
+  });
+
+  if (statRows.length) {
+    tblBox.innerHTML = `<table class="stats"><thead><tr><th>檔案名稱</th><th>TIS (檔案記錄)</th><th>TIS (內插計算)</th><th>上半球 φ0–180°</th><th>上半球 φ180–360°</th><th>下半球 φ0–180°</th><th>下半球 φ180–360°</th></tr></thead><tbody>${statRows.join("")}</tbody></table>`;
+  }
+  document.getElementById("cnt-tis").textContent = count;
+}
+
+// =========================================================================
+// 4. 一鍵打包下載全部圖表 (.zip)
+// =========================================================================
+document.getElementById("zip-all-btn").onclick = async () => {
+  const btn = document.getElementById("zip-all-btn");
+  btn.disabled = true; btn.textContent = "⏳ 正在打包所有圖表...";
+  try {
+    const zip = new JSZip();
+    for (const item of EXPORT_ITEMS) {
+      const blob = await item.getBlob();
+      zip.folder(item.folder).file(item.filename, blob);
+    }
+    const content = await zip.generateAsync({ type: "blob" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(content);
+    a.download = `Antenna_All_In_One_Report_${new Date().toISOString().slice(0, 10)}.zip`;
+    a.click();
+  } finally {
+    btn.disabled = false; btn.textContent = "📦 一鍵打包下載全部圖表 (.zip)";
+  }
+};
 </script>
 </body>
 </html>
