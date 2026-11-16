@@ -124,7 +124,7 @@
     <h2>① 上傳所有測試檔案</h2>
     <div class="drop-zone" id="drop-zone">
       <strong>將整個測試資料夾或多個 CSV / EMQ 檔案拖曳到這裡</strong>
-      <div style="color:var(--muted); font-size:12.5px; margin-top:4px;">自動辨識 S11 / Isolation / TableData (Efficiency & 3D Heatmap) / 3cut 2D Pattern / EMQuest TRP / Chamber TIS</div>
+      <div style="color:var(--muted); font-size:12.5px; margin-top:4px;">自動辨識 S11 / Isolation / TableData & Total (Efficiency & 3D Heatmap) / 3cut 2D Pattern / EMQuest TRP / Chamber TIS</div>
       <div class="drop-btns">
         <button class="btn primary" id="pick-files-btn">選擇多個檔案</button>
         <button class="btn" id="pick-dir-btn">選擇整個資料夾</button>
@@ -573,7 +573,7 @@ function readText(file) {
 }
 
 // =========================================================================
-// 2. 自動指紋辨識與分流器
+// 2. 自動指紋辨識與分流器（已修正判斷優先順序與特徵鎖定）
 // =========================================================================
 async function handleFiles(fileList) {
   const files = Array.from(fileList).filter(f => /\.(csv|emq)$/i.test(f.name));
@@ -584,18 +584,38 @@ async function handleFiles(fileList) {
   for (const file of files) {
     const text = await readText(file);
     const lines = text.split(/\r\n|\n|\r/);
-    const head = lines.slice(0, 60).join("\n");
+    const head = lines.slice(0, 80).join("\n");
     const nameLower = file.name.toLowerCase();
 
+    // 1. 06 TIS CSV：有 TIS (dBm) 且具備 Phi/Theta Angle 區塊
     if (text.includes("TIS (dBm)") && /^(Total|Theta|Phi),(Phi|Theta) Angle/m.test(head)) {
       BUCKETS.tis.push({ file, text, name: stripExt(file.name) });
-    } else if (text.includes("Tot. Rad. Pwr. (dBm)") || text.includes("Peak EIRP (dBm)")) {
-      BUCKETS.trp.push({ file, text, name: stripExt(file.name) });
-    } else if (nameLower.endsWith(".emq") || (/cut1/i.test(text) && /cut2/i.test(text)) || (lines[0] && lines[0].includes("Plane,Freq(MHz),Angle(deg)"))) {
+    }
+    // 2. 03 2D Pattern：優先於 TRP/TableData，避免 EMQuest 表頭的 TRP 字樣誤判
+    else if (
+      nameLower.endsWith(".emq") ||
+      /3cut/i.test(nameLower) ||
+      (/cut1/i.test(text) && /cut2/i.test(text)) ||
+      (lines[0] && lines[0].includes("Plane,Freq(MHz),Angle(deg)"))
+    ) {
       BUCKETS.pattern2d.push({ file, text, name: stripExt(file.name) });
-    } else if (text.includes("Efficiency (%)") && (text.includes("Gain (dBi)") || text.includes("Directivity (dBi)"))) {
+    }
+    // 3. 02 & 04 TableData (Total 檔)：有 Efficiency (%) 與 Gain 欄位
+    else if (
+      text.includes("Efficiency (%)") &&
+      (text.includes("Gain (dBi)") || text.includes("Directivity (dBi)") || text.includes("Average Gain"))
+    ) {
       BUCKETS.tableData.push({ file, text, name: stripExt(file.name) });
-    } else {
+    }
+    // 4. 05 EMQuest TRP CSV：具備 Total/Theta/Phi,Theta Angle 矩陣，且無 Efficiency (%)
+    else if (
+      (text.includes("Tot. Rad. Pwr. (dBm)") || text.includes("Peak EIRP (dBm)")) &&
+      /^(Total|Theta|Phi),Theta Angle/m.test(text)
+    ) {
+      BUCKETS.trp.push({ file, text, name: stripExt(file.name) });
+    }
+    // 5. 01 RL / VSWR / Isolation (VNA S-Parameter)
+    else {
       const freqLine = lines.slice(0, 30).find(l => l.toLowerCase().includes("freq") && l.includes(","));
       if (freqLine) {
         const fl = freqLine.toLowerCase();
@@ -613,7 +633,7 @@ async function handleFiles(fileList) {
   const cards = [
     { label: "01 RL / VSWR", list: BUCKETS.rl },
     { label: "01 Isolation", list: BUCKETS.iso },
-    { label: "02 & 04 TableData (Eff/3D)", list: BUCKETS.tableData },
+    { label: "02 & 04 TableData / Total", list: BUCKETS.tableData },
     { label: "03 2D Pattern (3cut)", list: BUCKETS.pattern2d },
     { label: "05 TRP CSV", list: BUCKETS.trp },
     { label: "06 TIS CSV", list: BUCKETS.tis },
@@ -627,7 +647,7 @@ async function handleFiles(fileList) {
   `).join("");
 
   document.getElementById("unknown-msg").innerHTML = BUCKETS.unknown.length
-    ? `<div class="msg warn">⚠️ 略過 ${BUCKETS.unknown.length} 個非天線量測格式檔案：${escapeHtml(BUCKETS.unknown.join("、"))}</div>`
+    ? `<div class="msg warn">⚠️ 略過 ${BUCKETS.unknown.length} 個無法辨識或非量測格式檔案：${escapeHtml(BUCKETS.unknown.join("、"))}</div>`
     : `<div class="msg ok">✅ 共 ${files.length} 個檔案已全數精準辨識並自動繪製完成！</div>`;
 
   document.getElementById("detect-summary").hidden = false;
@@ -774,7 +794,7 @@ function renderModule01_SParam(selBands, rlSpec) {
 }
 
 // =========================================================================
-// 模組 02：Efficiency & Peak Gain (從 TableData.csv 擷取)
+// 模組 02：Efficiency & Peak Gain (從 TableData / Total 檔擷取)
 // =========================================================================
 function parseEtsEfficiency(text) {
   const lines = text.split(/\r\n|\n|\r/);
